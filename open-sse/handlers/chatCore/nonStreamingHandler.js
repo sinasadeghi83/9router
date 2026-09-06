@@ -9,6 +9,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { parseResponsesSSEToJSON } from "../../transformer/streamToJsonConverter.js";
 import { unwrapClineEnvelope } from "../../shared/clineEnvelope.js";
+import { parseResponsesSSEToJSON } from "../../transformer/streamToJsonConverter.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
@@ -19,6 +20,13 @@ import {
   responsesToClaudeMessage,
 } from "./responseFormats.js";
 import { restoreToolNames } from "../../utils/opencodeFingerprint.js";
+
+import {
+  openAICompletionToClaudeMessage,
+  openAICompletionToResponses,
+  responsesToOpenAICompletion,
+  responsesToClaudeMessage,
+} from "./responseFormats.js";
 
 export {
   openAICompletionToClaudeMessage,
@@ -51,6 +59,15 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * OpenAI Chat Completions.
  */
 function providerBodyToOpenAI(responseBody, targetFormat, sourceFormat, customToolNames = null) {
+
+  // Provider responded in OpenAI Responses API shape
+  if (targetFormat === FORMATS.OPENAI_RESPONSES) {
+    const openAIResponse = responsesToOpenAICompletion(responseBody);
+    if (sourceFormat === FORMATS.CLAUDE) {
+      return openAICompletionToClaudeMessage(openAIResponse);
+    }
+    return openAIResponse;
+  }
 
   // Provider responded in OpenAI Responses API shape
   if (targetFormat === FORMATS.OPENAI_RESPONSES) {
