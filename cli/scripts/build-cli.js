@@ -119,6 +119,61 @@ function copyStandaloneBuild(appDir, buildDistDir, cliAppDir) {
   if (standaloneApp !== standaloneRoot && fs.existsSync(standaloneNodeModules)) {
     copyRecursive(standaloneNodeModules, path.join(cliAppDir, "node_modules"));
   }
+
+  // pnpm compatibility: Next standalone output keeps transitive deps isolated
+  // under node_modules/.pnpm/<pkg>/node_modules (e.g. @swc/helpers lives only
+  // as .pnpm/next@.../node_modules/@swc/helpers). copyRecursive above
+  // dereferences the `next` symlink into a real directory, detaching it from
+  // that store, so `require('@swc/helpers')` fails at runtime. Flatten the
+  // traced store into cliApp/node_modules (npm-style) so the bundle is
+  // portable regardless of npm/pnpm layout.
+  flattenPnpmStore(standaloneApp, cliAppDir);
+  if (standaloneApp !== standaloneRoot) {
+    flattenPnpmStore(standaloneRoot, cliAppDir);
+  }
+}
+
+// Copy every package from a pnpm virtual store
+// (<root>/node_modules/.pnpm/*/node_modules/*) into destRoot/node_modules as
+// real files. Existing entries are kept (e.g. `next` itself was already
+// copied). Skips `.bin` and dotfiles.
+function flattenPnpmStore(storeRoot, cliAppDir) {
+  const pnpmDir = path.join(storeRoot, "node_modules", ".pnpm");
+  if (!fs.existsSync(pnpmDir)) {
+    return;
+  }
+  const destRoot = path.join(cliAppDir, "node_modules");
+  let entries;
+  try {
+    entries = fs.readdirSync(pnpmDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const storeEntry of entries) {
+    if (!storeEntry.isDirectory() || storeEntry.name.startsWith(".")) {
+      continue;
+    }
+    const srcNodeModules = path.join(pnpmDir, storeEntry.name, "node_modules");
+    if (!fs.existsSync(srcNodeModules)) {
+      continue;
+    }
+    let pkgs;
+    try {
+      pkgs = fs.readdirSync(srcNodeModules, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const pkg of pkgs) {
+      if (pkg.name.startsWith(".") || pkg.name === ".bin") {
+        continue;
+      }
+      const dest = path.join(destRoot, pkg.name);
+      if (fs.existsSync(dest)) {
+        continue;
+      }
+      copyRecursive(path.join(srcNodeModules, pkg.name), dest);
+    }
+  }
 }
 
 function mergeServerArtifacts(buildDistDir, cliAppDir) {
@@ -346,6 +401,7 @@ function buildCliPackage() {
 module.exports = {
   assertRequiredApiArtifacts,
   copyStandaloneBuild,
+  flattenPnpmStore,
   mergeServerArtifacts,
 };
 
