@@ -1,9 +1,12 @@
 {
-  "name": "9router",
+  "name": "@sinatechs/9router",
   "version": "0.5.86",
   "description": "9Router CLI - Start and manage 9Router server",
   "bin": {
     "9router": "./cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "cli.js",
@@ -16,10 +19,10 @@
   "scripts": {
     "dev": "nodemon -I --watch cli.js --watch src --watch hooks --ext js,json cli.js",
     "build": "node scripts/build-cli.js",
-    "pack:cli": "npm run build && npm pack --pack-destination ..",
-    "publish:cli": "npm run build && npm publish",
+    "pack:cli": "pnpm run build && pnpm pack --pack-destination ..",
+    "publish:cli": "pnpm run build && pnpm publish",
     "postinstall": "node hooks/postinstall.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "enquirer": "^2.4.1",
