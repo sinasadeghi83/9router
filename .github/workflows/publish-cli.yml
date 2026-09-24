@@ -125,14 +125,15 @@ jobs:
       - name: Pack CLI package into tarball
         id: pack
         run: |
-          TARBALL_PATH=$(pnpm --dir cli pack --pack-destination .. | tail -n 1)
+          TARBALL_PATH=$(pnpm --dir cli pack --pack-destination "${{ github.workspace }}" | tail -n 1)
           if [ ! -f "$TARBALL_PATH" ]; then
-            TARBALL_PATH="./sinatechs-9router-${{ steps.version.outputs.version }}.tgz"
+            TARBALL_PATH="${{ github.workspace }}/sinatechs-9router-${{ steps.version.outputs.version }}.tgz"
           fi
           if [ ! -f "$TARBALL_PATH" ]; then
             echo "::error::Tarball file not found at $TARBALL_PATH"
             exit 1
           fi
+          TARBALL_PATH=$(realpath "$TARBALL_PATH")
           echo "Packed tarball: $TARBALL_PATH"
           ls -lh "$TARBALL_PATH"
           echo "tarball_path=$TARBALL_PATH" >> $GITHUB_OUTPUT
