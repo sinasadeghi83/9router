@@ -71,7 +71,7 @@
 **1. 全局安装：**
 
 ```bash
-npm install -g 9router
+npm install -g @sinatechs/9router
 9router
 ```
 

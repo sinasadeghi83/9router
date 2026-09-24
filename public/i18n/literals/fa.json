@@ -1344,7 +1344,7 @@
   "name|apiKey": "name|apiKey",
   "no_proxy:": "بدون پروکسی:",
   "not detected locally": "در سیستم محلی شناسایی نشد",
-  "npm install -g 9router": "npm install -g 9router",
+  "npm install -g @sinatechs/9router": "npm install -g @sinatechs/9router",
   "npx 9router": "npx 9router",
   "open http://localhost:9099": "باز کردن http://localhost:9099",
   "openid profile email": "openid profile email",

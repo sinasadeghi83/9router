@@ -76,7 +76,7 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 **1. Installez globalement :**
 
 ```bash
-npm install -g 9router
+npm install -g @sinatechs/9router
 9router
 ```
 
@@ -1442,4 +1442,3 @@ Licence MIT - voir [LICENSE](LICENSE) pour plus de détails.
 <div align="center">
   <sub>Conçu avec ❤️ pour les développeurs qui codent 24h/24 et 7j/7</sub>
 </div>
-

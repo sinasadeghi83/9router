@@ -76,7 +76,7 @@
 **۱. نصب سراسری:**
 
 ```bash
-npm install -g 9router
+npm install -g @sinatechs/9router
 9router
 ```
 

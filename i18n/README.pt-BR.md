@@ -76,7 +76,7 @@ Resultado: programe sem interrupções, com custo mínimo e economia de 20% a 40
 **1. Instale globalmente:**
 
 ```bash
-npm install -g 9router
+npm install -g @sinatechs/9router
 9router
 ```
 
@@ -1523,4 +1523,3 @@ Licença MIT - consulte [LICENSE](../LICENSE) para obter detalhes.
 <div align="center">
   <sub>Construído com ❤️ para desenvolvedores que codificam 24/7</sub>
 </div>
-
