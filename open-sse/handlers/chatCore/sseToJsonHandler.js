@@ -37,6 +37,81 @@ function pickAssistantMessageForChatCompletion(output) {
 }
 
 /**
+ * Convert an OpenAI Chat Completions JSON body into the Responses API shape.
+ * Inlined here (not imported from nonStreamingHandler.js) to avoid a circular
+ * import. Mirrors openAICompletionToResponses in nonStreamingHandler.js.
+ */
+function extractCustomToolInput(argumentsValue) {
+  const argumentsText = typeof argumentsValue === "string" ? argumentsValue : JSON.stringify(argumentsValue || {});
+  try {
+    const parsed = JSON.parse(argumentsText);
+    if (parsed && typeof parsed === "object" && typeof parsed.input === "string") return parsed.input;
+  } catch { /* raw freeform input */ }
+  return argumentsText;
+}
+
+function chatCompletionToResponses(responseBody, customToolNames = null) {
+  const choice = responseBody?.choices?.[0];
+  if (!choice) return responseBody;
+
+  const message = choice.message || {};
+  const output = [];
+  // Output items carry ids in the Responses API (rs_..., msg_...).
+  const baseId = String(responseBody.id || Date.now()).replace(/^chatcmpl-/, "");
+
+  const reasoning = message.reasoning_content || message.reasoning;
+  if (typeof reasoning === "string" && reasoning.length > 0) {
+    output.push({
+      type: RESPONSES_ITEM.REASONING,
+      id: `rs_${baseId}`,
+      summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: reasoning }],
+    });
+  }
+
+  const text = typeof message.content === "string" ? message.content : "";
+  if (text.length > 0) {
+    output.push({
+      type: RESPONSES_ITEM.MESSAGE,
+      id: `msg_${baseId}`,
+      status: "completed",
+      role: ROLE.ASSISTANT,
+      content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, text, annotations: [] }],
+    });
+  }
+
+  for (const tc of message.tool_calls || []) {
+    const fn = tc.function || {};
+    const custom = customToolNames?.has(fn.name);
+    output.push({
+      type: custom ? RESPONSES_ITEM.CUSTOM_TOOL_CALL : RESPONSES_ITEM.FUNCTION_CALL,
+      id: `${custom ? "ctc" : "fc"}_${tc.id || ""}`,
+      call_id: tc.id || "",
+      name: fn.name || "",
+      ...(custom
+        ? { input: extractCustomToolInput(fn.arguments) }
+        : { arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {}) }),
+    });
+  }
+
+  const usage = responseBody.usage || {};
+  return {
+    id: `resp_${responseBody.id || ""}`.replace(/^resp_chatcmpl-/, "resp_"),
+    object: "response",
+    created_at: responseBody.created || Math.floor(Date.now() / 1000),
+    model: responseBody.model || "unknown",
+    status: "completed",
+    background: false,
+    error: null,
+    output,
+    usage: {
+      input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
+      output_tokens: usage.completion_tokens || usage.output_tokens || 0,
+      total_tokens: usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0),
+    },
+  };
+}
+
+/**
  * Parse OpenAI-style SSE text into a single chat completion JSON.
  * Used when provider forces streaming but client wants non-streaming.
  */
