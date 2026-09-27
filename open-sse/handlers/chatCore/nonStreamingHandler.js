@@ -28,7 +28,6 @@ import {
   responsesToClaudeMessage,
 } from "./responseFormats.js";
 
-
 export {
   openAICompletionToClaudeMessage,
   openAICompletionToResponses,
