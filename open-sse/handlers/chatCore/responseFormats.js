@@ -77,10 +77,15 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
   const message = choice.message || {};
   const output = [];
 
+  // Output items carry ids in the Responses API (rs_..., msg_...); strict clients such
+  // as the Vercel AI SDK reject items without one.
+  const baseId = String(responseBody.id || Date.now()).replace(/^chatcmpl-/, "");
+
   const reasoning = message.reasoning_content || message.reasoning;
   if (typeof reasoning === "string" && reasoning.length > 0) {
     output.push({
       type: RESPONSES_ITEM.REASONING,
+      id: `rs_${baseId}`,
       summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: reasoning }],
     });
   }
@@ -89,6 +94,8 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
   if (text.length > 0) {
     output.push({
       type: RESPONSES_ITEM.MESSAGE,
+      id: `msg_${baseId}`,
+      status: "completed",
       role: ROLE.ASSISTANT,
       content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, text, annotations: [] }],
     });
