@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-# v0.5.92 (2026-09-27)
-
-## Fixes
-- **OpenCode**: clamp muse-spark `max_output_tokens` to [8000, 1M] on the go/zen lanes (was oc-only), fixing `400 max_output_tokens must be >= …` on Claude Code model probes for `muse-spark-1.3-contributor`
-=======
 # v0.5.95 (2026-10-01)
 
 ## Features
@@ -33,7 +27,11 @@
 - **CLI Tools**: replace `sk_9router` placeholder with first active dashboard API key
 - **Dashboard**: exclude hidden providers from usage stats provider list
 - **Capabilities**: add deepseek-v4-1-flash vision alias; add zed to live catalog providers
->>>>>>> a99cf572 (# v0.5.95 (2026-10-01))
+- 
+# v0.5.92 (2026-09-27)
+
+## Fixes
+- **OpenCode**: clamp muse-spark `max_output_tokens` to [8000, 1M] on the go/zen lanes (was oc-only), fixing `400 max_output_tokens must be >= …` on Claude Code model probes for `muse-spark-1.3-contributor`
 
 # v0.5.91 (2026-09-26)
 
