@@ -270,6 +270,10 @@ export function createResponsesApiTransformStream(logger = null, customToolNames
   const sendCompleted = (controller) => {
     if (!state.completedSent) {
       state.completedSent = true;
+      // Build the output array from accumulated output_item.done items, sorted by
+      // output_index so the order matches the streaming order.
+      // This satisfies clients (GitHub Copilot CLI, OpenAI SDK final-response helpers)
+      // that build the final result from response.completed rather than from deltas.
       const output = state.outputItems
         .slice()
         .sort((a, b) => a.output_index - b.output_index)
