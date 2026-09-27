@@ -28,6 +28,19 @@ export function isMuseSparkModel(modelId) {
   return /^muse[-_]?spark(?:$|[-_:.\s])/i.test(base);
 }
 
+// Muse Spark spends most of its token budget on internal reasoning before emitting
+// text; below ~8k it exhausts the cap while still reasoning and returns
+// status:"incomplete" with output:[] (#4254). Upstream ceiling is 1M (400 above).
+export const MUSE_SPARK_MIN_OUTPUT_TOKENS = 8000;
+export const MUSE_SPARK_MAX_OUTPUT_TOKENS = 1000000;
+
+export function clampMuseSparkOutputTokens(value) {
+  const cap = Number(value);
+  if (!Number.isFinite(cap) || cap < MUSE_SPARK_MIN_OUTPUT_TOKENS) return MUSE_SPARK_MIN_OUTPUT_TOKENS;
+  if (cap > MUSE_SPARK_MAX_OUTPUT_TOKENS) return MUSE_SPARK_MAX_OUTPUT_TOKENS;
+  return cap;
+}
+
 // Endpoint families for OpenCode models outside the curated registry (modelsFetcher /
 // passthrough ids) — regex keeps auto-fetched models on the right endpoint:
 // /responses (gpt/grok/muse-spark), /messages (minimax/qwen), /chat/completions (rest).

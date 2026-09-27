@@ -74,7 +74,7 @@ describe("OpenCode Free endpoint routing", () => {
     const executor = new OpenCodeExecutor();
     const muse = { max_tokens: 4096, reasoning_effort: "high" };
     executor.transformRequest(MUSE, muse, true, {});
-    expect(muse.max_output_tokens).toBe(4096);
+    expect(muse.max_output_tokens).toBe(8000); // muse-spark floor (#4254)
     expect(muse.max_tokens).toBeUndefined();
     expect(muse.reasoning).toEqual({ effort: "high", summary: "auto" });
 

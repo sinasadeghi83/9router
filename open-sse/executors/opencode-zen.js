@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
-import { isMuseSparkModel } from "../providers/models/helpers.js";
+import { isMuseSparkModel, clampMuseSparkOutputTokens } from "../providers/models/helpers.js";
 import { readToolStrict, restoreToolStrict } from "../translator/concerns/toolStrict.js";
 import {
   normalizeResponsesInput,
@@ -302,6 +302,11 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     }
     delete out.max_tokens;
     delete out.max_completion_tokens;
+    // Same muse-spark floor/ceiling as the oc lane (#4254); undefined → 8000 so a
+    // bare client probe never hits the upstream "`max_output_tokens` >= …" 400.
+    if (isMuseSparkModel(model || out.model)) {
+      out.max_output_tokens = clampMuseSparkOutputTokens(out.max_output_tokens);
+    }
     if (out.reasoning_effort !== undefined && out.reasoning === undefined) {
       out.reasoning = { effort: out.reasoning_effort, summary: "auto" };
     }

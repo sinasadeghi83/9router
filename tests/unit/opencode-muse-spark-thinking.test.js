@@ -161,7 +161,7 @@ describe("OpenCode Free Muse Spark thinking", () => {
       });
 
       expect(out.reasoning).toEqual({ effort: "high", summary: "auto" });
-      expect(out.max_output_tokens).toBe(2048);
+      expect(out.max_output_tokens).toBe(8000); // clamped to muse-spark floor (#4254)
       expect(out.max_tokens).toBeUndefined();
     }
   });
