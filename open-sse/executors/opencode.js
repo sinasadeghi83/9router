@@ -5,7 +5,7 @@ import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { getThinkingLevels } from "../providers/thinkingLevels.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
-import { isMuseSparkModel } from "../providers/models/helpers.js";
+import { isMuseSparkModel, clampMuseSparkOutputTokens } from "../providers/models/helpers.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import {
@@ -434,20 +434,10 @@ export class OpenCodeExecutor extends BaseExecutor {
       delete body.max_tokens;
       delete body.max_completion_tokens;
 
-      // muse-spark models spend most of their token budget on internal reasoning
-      // before emitting any text. Below ~8k tokens the model exhausts the cap while
-      // still reasoning and returns status:"incomplete" with output:[] — the caller
-      // receives a silent empty turn (#4254). Clamp to the safe window.
-      // The upstream ceiling is 1 000 000 (requests above that return 400).
+      // muse-spark spends its budget on internal reasoning; clamp to the safe
+      // window (#4254) — shared helper so go/zen lanes behave the same.
       if (isMuseSparkModel(baseModelId(model || body?.model))) {
-        const MUSE_MIN = 8000;
-        const MUSE_MAX = 1000000;
-        const cap = Number(body.max_output_tokens);
-        if (!Number.isFinite(cap) || cap < MUSE_MIN) {
-          body.max_output_tokens = MUSE_MIN;
-        } else if (cap > MUSE_MAX) {
-          body.max_output_tokens = MUSE_MAX;
-        }
+        body.max_output_tokens = clampMuseSparkOutputTokens(body.max_output_tokens);
       }
       normalizeOpencodeReasoning(model, body);
       body.stream = true;

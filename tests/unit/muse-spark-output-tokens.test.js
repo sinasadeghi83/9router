@@ -13,18 +13,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { isMuseSparkModel } from "../../open-sse/providers/models/helpers.js";
-
-// Replicate the clamping logic from opencode.js so we can test it in isolation.
-const MUSE_MIN = 8000;
-const MUSE_MAX = 1_000_000;
-
-function clampMuseOutputTokens(maxOutputTokens) {
-  const cap = Number(maxOutputTokens);
-  if (!Number.isFinite(cap) || cap < MUSE_MIN) return MUSE_MIN;
-  if (cap > MUSE_MAX) return MUSE_MAX;
-  return cap;
-}
+import {
+  isMuseSparkModel,
+  clampMuseSparkOutputTokens as clampMuseOutputTokens,
+  MUSE_SPARK_MIN_OUTPUT_TOKENS as MUSE_MIN,
+  MUSE_SPARK_MAX_OUTPUT_TOKENS as MUSE_MAX,
+} from "../../open-sse/providers/models/helpers.js";
 
 // ── isMuseSparkModel ────────────────────────────────────────────────────────
 
