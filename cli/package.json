@@ -8,6 +8,15 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sinasadeghi83/9router.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/sinasadeghi83/9router#readme",
+  "bugs": {
+    "url": "https://github.com/sinasadeghi83/9router/issues"
+  },
   "files": [
     "cli.js",
     "src",
