@@ -87,7 +87,13 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     }
   }
 
-  // Build tool responses cache
+  // Build tool responses cache keyed by tool_call_id.
+  // NOTE: do NOT build a global tool_call_id→name map here. In long sessions
+  // the same ID string can be reused by different tool calls in different turns
+  // (e.g. call_81334 for "edit" at turn 30, then for "bash" at turn 70).
+  // A global map would overwrite the earlier entry and corrupt the
+  // functionResponse.name for that turn, causing Gemini 400 INVALID_ARGUMENT.
+  // Instead we resolve names inline per-turn from the assistant message itself.
   const toolResponses = {};
   if (body.messages && Array.isArray(body.messages)) {
     for (const msg of body.messages) {
@@ -137,6 +143,16 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
         }
 
         if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+          // Build a turn-scoped id→name map from THIS assistant message only.
+          // Using a global map across all turns causes collisions when the same
+          // tool_call_id string is recycled in later turns (Gemini 400).
+          const turnIdToName = {};
+          for (const tc of msg.tool_calls) {
+            if (tc.type === OPENAI_BLOCK.FUNCTION && tc.id && tc.function?.name) {
+              turnIdToName[tc.id] = tc.function.name;
+            }
+          }
+
           const toolCallIds = [];
           let firstFunctionCallSeen = false;
           for (const tc of msg.tool_calls) {
@@ -176,7 +192,9 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
               let resp = toolResponses[fid];
               if (resp === undefined) resp = "";
 
-              let name = tcID2Name[fid];
+              // Resolve name from the turn-scoped map (avoids cross-turn ID collisions).
+              // Fall back to ID-based heuristic only if the turn map has no entry.
+              let name = turnIdToName[fid];
               if (!name) {
                 const idParts = fid.split("-");
                 if (idParts.length > 2) {
