@@ -160,7 +160,6 @@ function openAICompletionToResponses(responseBody, customToolNames = null) {
     },
   };
 }
->>>>>>> @{-1}
 
 /**
  * Translate a non-streaming response body from the provider format to the client
