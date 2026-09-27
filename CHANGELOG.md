@@ -1,3 +1,8 @@
+# v0.5.92 (2026-09-27)
+
+## Fixes
+- **OpenCode**: clamp muse-spark `max_output_tokens` to [8000, 1M] on the go/zen lanes (was oc-only), fixing `400 max_output_tokens must be >= …` on Claude Code model probes for `muse-spark-1.3-contributor`
+
 # v0.5.91 (2026-09-26)
 
 ## Features
