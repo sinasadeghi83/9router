@@ -39,6 +39,13 @@ export function clampMuseSparkOutputTokens(value) {
   if (!Number.isFinite(cap) || cap < MUSE_SPARK_MIN_OUTPUT_TOKENS) return MUSE_SPARK_MIN_OUTPUT_TOKENS;
   if (cap > MUSE_SPARK_MAX_OUTPUT_TOKENS) return MUSE_SPARK_MAX_OUTPUT_TOKENS;
   return cap;
+// "model(level)" is a 9router thinking override; strip before matching.
+// Accepts both bare ids ("deepseek-v4-pro(max)") and provider-prefixed ones.
+export function isDeepSeekModel(modelId) {
+  if (!modelId || typeof modelId !== "string") return false;
+  const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
+  const base = clean.includes("/") ? clean.split("/").pop() : clean;
+  return /^deepseek-/i.test(base);
 }
 
 // Endpoint families for OpenCode models outside the curated registry (modelsFetcher /
