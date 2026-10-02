@@ -288,6 +288,9 @@ importers:
 
   cli:
     dependencies:
+      confbox:
+        specifier: ^0.2.4
+        version: 0.2.4
       enquirer:
         specifier: ^2.4.1
         version: 2.4.1
