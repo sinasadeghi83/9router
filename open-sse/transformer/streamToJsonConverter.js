@@ -12,6 +12,7 @@ function createInitialState() {
     model: "",
     created: Math.floor(Date.now() / 1000),
     status: "in_progress",
+    incompleteReason: "",
     usage: { ...EMPTY_RESPONSE },
     items: new Map(),
     itemIdMap: new Map(),
@@ -137,6 +138,33 @@ function processSSEMessage(msg, state) {
         state.usage.cache_creation_input_tokens = parsed.response.usage.cache_creation_input_tokens;
       }
     }
+  } else if (eventType === "response.incomplete") {
+    state.status = "incomplete";
+    state.incompleteReason = parsed.response?.incomplete_details?.reason || "";
+    if (parsed.response?.id) state.responseId = parsed.response.id;
+    if (parsed.response?.model) state.model = parsed.response.model;
+    if (Array.isArray(parsed.response?.output) && parsed.response.output.length > 0) {
+      parsed.response.output.forEach((outItem, i) => {
+        const existing = state.items.get(i);
+        if (!existing || (!existing.arguments && outItem.arguments) || (!existing.content?.length && outItem.content?.length)) {
+          state.items.set(i, outItem);
+        }
+      });
+    }
+    if (parsed.response?.usage) {
+      state.usage.input_tokens = parsed.response.usage.input_tokens || parsed.response.usage.prompt_tokens || 0;
+      state.usage.output_tokens = parsed.response.usage.output_tokens || parsed.response.usage.completion_tokens || 0;
+      state.usage.total_tokens = parsed.response.usage.total_tokens || (state.usage.input_tokens + state.usage.output_tokens);
+      if (parsed.response.usage.input_tokens_details) {
+        state.usage.input_tokens_details = parsed.response.usage.input_tokens_details;
+      }
+      if (parsed.response.usage.cache_read_input_tokens) {
+        state.usage.cache_read_input_tokens = parsed.response.usage.cache_read_input_tokens;
+      }
+      if (parsed.response.usage.cache_creation_input_tokens) {
+        state.usage.cache_creation_input_tokens = parsed.response.usage.cache_creation_input_tokens;
+      }
+    }
   } else if (eventType === "response.failed" || eventType === "error") {
     state.status = "failed";
     state.error = parsed.error || parsed.response?.error || { message: "Response failed" };
@@ -159,6 +187,7 @@ function buildResponsesJsonObject(state, fallbackModel = "unknown") {
     object: "response",
     created_at: state.created,
     status: state.status || "completed",
+    incomplete_details: state.status === "incomplete" ? { reason: state.incompleteReason || null } : null,
     model: state.model || fallbackModel || "unknown",
     output,
     usage: state.usage,
