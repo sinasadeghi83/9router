@@ -1,3 +1,9 @@
+# v0.5.96 (2026-10-07)
+
+## Fixes
+- **Translator**: keep `service_tier` through the Anthropic → OpenAI pivot
+- **Translator/Responses**: map `response.incomplete` (`max_output_tokens`) to `finish_reason: length` on streaming and non-streaming paths, so truncated turns no longer surface as empty `stop` with zero usage
+
 # v0.5.95 (2026-10-01)
 
 ## Features
