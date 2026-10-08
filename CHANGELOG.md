@@ -1,3 +1,12 @@
+# v0.5.100 (2026-10-08)
+
+## Merge
+- Merge `master` v0.5.99 into `master-sina`: Bedrock provider with AWS SSO, Hermes per-profile configuration, per-API-key access control, Netlify relay proxy pool, MiniMax Code provider, Antigravity Gemini 3.8 catalog refresh, dashboard mobile fixes
+- Preserve sina customizations: `@sinatechs/9router` CLI name, port 20128, pnpm workspace scripts, sina repository metadata
+- **Translator/Gemini**: combine both duplicate `tool_call_id` fixes — queued per-id tool responses and turn-scoped names (#4273) with uniquified emitted ids (#4532)
+- **Codex**: keep null-aware `toolStrict` strict preservation through the merge
+- Restore `enquirer` and `@aws-sdk/credential-providers` dependencies from `master` (Bedrock SSO) with an updated `pnpm-lock.yaml`
+
 # v0.5.99 (2026-10-08)
 
 ## Features
