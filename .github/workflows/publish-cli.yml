@@ -152,7 +152,7 @@ jobs:
             --access public \
             --no-git-checks \
             --ignore-scripts \
-            --tag "${{ inputs.dist_tag || 'latest' }}" \
+            --tag "${{ inputs.dist_tag != '' && inputs.dist_tag || 'latest' }}"
             --provenance
 
       - name: Create GitHub Release
