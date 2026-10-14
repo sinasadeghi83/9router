@@ -64,8 +64,30 @@ export function createSSEStream(options = {}) {
   // Per-stream decoder with stream:true to correctly handle multi-byte chars split across chunks
   const decoder = new TextDecoder("utf-8", { fatal: false });
 
+  // Whether the client asked for thinking. Claude clients that never enabled
+  // thinking must not receive thinking blocks (no signature, renders as message
+  // text or aborts before tool_use). Undefined = unknown, preserve legacy emit.
+  const clientWantsThinking = (() => {
+    try {
+      if (sourceFormat !== FORMATS.CLAUDE) return undefined;
+      const t = body?.thinking;
+      if (t && typeof t === "object") {
+        if (t.type === "enabled" || t.type === "adaptive") return true;
+        if (t.type === "disabled") return false;
+      }
+      const effort = body?.output_config?.effort;
+      if (typeof effort === "string" && effort) {
+        const e = effort.toLowerCase();
+        if (e === "none" || e === "off") return false;
+        return true;
+      }
+      return false;
+    } catch { return undefined; }
+  })();
+
   const state = mode === STREAM_MODE.TRANSLATE
     ? { ...initState(sourceFormat), provider, toolNameMap, customToolNames: new Set(customToolNames || []), model, sessionId: credentials?._clientSessionId || null,
+        clientWantsThinking,
         // Which upstream format this stream came from. A response translator can be
         // reached either directly (target === its registered source) or as the second
         // hop of a pivot, and on the terminal null chunk the pivot drops it — so a
@@ -280,6 +302,17 @@ export function createSSEStream(options = {}) {
           ? getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed)
           : null;
 
+        // Meta/Muse-style Responses SSE splits framing across lines:
+        // `event: response.output_text.delta` + `data: {"output_index":0,"delta":"..."}`.
+        // parseSSELine only sees the data line, so the translator (which dispatches
+        // on chunk.type||chunk.event) drops it as unknown. Restore the event name
+        // here so text/tool/reasoning deltas survive translation.
+        if (isOpenAIResponsesStream && openAIResponsesEventName && parsed && typeof parsed === "object" && !parsed.done) {
+          if (!parsed.type && !parsed.event) {
+            parsed.type = openAIResponsesEventName;
+          }
+        }
+
         if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
           openAIResponsesTerminalSeen = true;
         }
@@ -460,6 +493,12 @@ export function createSSEStream(options = {}) {
           // accepts "data: " lines, so an NDJSON provider (Ollama) lost whatever
           // arrived without its closing newline.
           const parsed = parseSSELine(buffer.trim(), targetFormat);
+          // Same event-name restoration as the transform loop for trailing fragments.
+          if (targetFormat === FORMATS.OPENAI_RESPONSES && parsed && typeof parsed === "object" && !parsed.done) {
+            if (!parsed.type && !parsed.event && currentOpenAIResponsesEvent) {
+              parsed.type = currentOpenAIResponsesEvent;
+            }
+          }
           // parseSSELine turns the SSE sentinel "data: [DONE]" into { done: true },
           // which must not be translated. An Ollama chunk also carries done:true,
           // but it is the real final chunk — it holds finish_reason and the token
