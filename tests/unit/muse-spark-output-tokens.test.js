@@ -7,7 +7,7 @@
  * with max_tokens ≤ ~500 return HTTP 200 with status:"incomplete" and output:[].
  *
  * Fix: in OpenCodeExecutor.transformRequest, clamp max_output_tokens for muse-spark
- * models to [32000, 1_000_000] (upstream rejects requests above 1e6).
+ * models to [32000, 131072] (upstream max output for muse-spark-1.3).
  *
  * These tests verify the clamping logic via the transformRequest output.
  */
@@ -71,8 +71,12 @@ describe("muse-spark max_output_tokens clamping (#4254)", () => {
     expect(clampMuseOutputTokens(32000)).toBe(32000);
   });
 
-  it("clamps 2_000_000 to MUSE_MAX (1_000_000)", () => {
+  it("clamps 2_000_000 to MUSE_MAX (131072)", () => {
     expect(clampMuseOutputTokens(2_000_000)).toBe(MUSE_MAX);
+  });
+
+  it("clamps 1_000_000 to MUSE_MAX (131072)", () => {
+    expect(clampMuseOutputTokens(1_000_000)).toBe(MUSE_MAX);
   });
 
   it("leaves exactly MUSE_MAX unchanged", () => {

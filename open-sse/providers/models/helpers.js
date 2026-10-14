@@ -32,9 +32,9 @@ export function isMuseSparkModel(modelId) {
 // text; below ~32k it exhausts the cap while still reasoning and returns
 // status:"incomplete" with output:[] (#4254). Floor matches DEFAULT_MIN_TOKENS so
 // agent turns (Claude-with-tools floor 32k) never arrive under-budgeted.
-// Upstream ceiling is 1M (400 above).
+// Upstream ceiling for muse-spark-1.3 max output is 131072.
 export const MUSE_SPARK_MIN_OUTPUT_TOKENS = 32000;
-export const MUSE_SPARK_MAX_OUTPUT_TOKENS = 1000000;
+export const MUSE_SPARK_MAX_OUTPUT_TOKENS = 131072;
 
 export function clampMuseSparkOutputTokens(value) {
   const cap = Number(value);
