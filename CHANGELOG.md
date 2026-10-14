@@ -1,3 +1,12 @@
+# v0.5.103 (2026-10-15)
+
+## Fixes
+- **Stream/Responses**: restore `event:` name into typeless SSE `data:` payloads before `translateResponse` (Meta-style event-only `output_text`/`function_call_arguments`/`reasoning` deltas no longer drop to `null` and end turns preamble-only)
+- **Translator**: pass `tool_choice` (`auto`/`none`/`required`/specific function) and `parallel_tool_calls` through OpenAI → Responses instead of dropping to default `auto`
+- **Translator/Responses**: handle `response.function_call_arguments.done` / `response.custom_tool_call_input.done` (emit once when no deltas arrived) and read `item.input` for `custom_tool_call` `output_item.done`
+- **Claude**: suppress signature-less `thinking` blocks when the client never enabled thinking (streaming + non-streaming), so reasoning no longer leaks into visible message text
+- **Muse Spark**: tool-aware output floor — 32k without tools, 64k with tools (cap 131072) across chatCore and opencode/go/zen executors, so agentic turns stop truncating into preamble-only `incomplete` turns
+
 # v0.5.102 (2026-10-14)
 
 ## Fixes
