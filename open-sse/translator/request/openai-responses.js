@@ -467,6 +467,25 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
   // Pass through other relevant fields
   if (body.temperature !== undefined) result.temperature = body.temperature;
+  // Preserve the client's tool-calling intent: dropping tool_choice silently
+  // downgrades a forced-tool turn ("any"/specific function) to "auto", which lets
+  // the model answer text-only where the client demanded a call. Map Chat shapes
+  // ({type:"function",function:{name}}) to Responses shapes ({type:"function",name}).
+  if (body.tool_choice !== undefined) {
+    const tc = body.tool_choice;
+    if (typeof tc === "string" && ["auto", "none", "required"].includes(tc)) {
+      result.tool_choice = tc;
+    } else if (tc && typeof tc === "object" && !Array.isArray(tc)) {
+      if (tc.type === "function") {
+        const name = typeof tc.function?.name === "string" ? tc.function.name
+          : (typeof tc.name === "string" ? tc.name : "");
+        if (name.trim()) result.tool_choice = { type: "function", name: name.trim().slice(0, MAX_TOOL_NAME_LEN) };
+      } else if (typeof tc.type === "string" && ["auto", "none", "required"].includes(tc.type)) {
+        result.tool_choice = tc.type;
+      }
+    }
+  }
+  if (typeof body.parallel_tool_calls === "boolean") result.parallel_tool_calls = body.parallel_tool_calls;
   if (body.max_output_tokens !== undefined) {
     result.max_output_tokens = body.max_output_tokens;
   } else if (body.max_completion_tokens !== undefined) {

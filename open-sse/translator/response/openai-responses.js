@@ -621,12 +621,34 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   }
 
   // Function call done (standard or custom_tool_call variant).
+  // Fine-grained done events carry the complete payload when an upstream sends
+  // no argument deltas at all — emit once in that case, skip when deltas already
+  // covered the call so the client never sees duplicated JSON.
+  if (eventType === "response.function_call_arguments.done" || eventType === "response.custom_tool_call_input.done") {
+    const full = (typeof data.arguments === "string" && data.arguments)
+      || (typeof data.input === "string" && data.input)
+      || (typeof data.delta === "string" && data.delta)
+      || "";
+    if (!full) return null;
+    const known = data.item_id ? state.respToolChatIndex?.get(data.item_id) : undefined;
+    const idx = known ?? Math.max(0, (state.toolCallIndex || 1) - 1);
+    state.respToolArgsEmitted ??= new Set();
+    if (state.respToolArgsEmitted.has(idx)) return null;
+    state.respToolArgsEmitted.add(idx);
+    return buildChunk(
+      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+      { tool_calls: [{ index: idx, function: { arguments: full } }] }
+    );
+  }
+
+  // Function call done (standard or custom_tool_call variant).
   // Index was assigned at added-time; nothing to advance. Some upstreams send
   // complete arguments only here (no deltas) — emit them once in that case.
   if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
     const key = data.item?.id || data.item_id;
     const idx = (key && state.respToolChatIndex?.get(key)) ?? Math.max(0, (state.toolCallIndex || 1) - 1);
-    const fullArgs = data.item?.arguments;
+    const rawArgs = data.item?.arguments ?? data.item?.input;
+    const fullArgs = typeof rawArgs === "string" ? rawArgs : "";
     if (typeof fullArgs === "string" && fullArgs) {
       state.respToolArgsEmitted ??= new Set();
       if (!state.respToolArgsEmitted.has(idx)) {
