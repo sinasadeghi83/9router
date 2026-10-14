@@ -1,3 +1,10 @@
+# v0.5.102 (2026-10-14)
+
+## Fixes
+- **Translator**: surface ANY Muse Spark truncation as `length`/`max_tokens` regardless of `incomplete_details.reason` (streaming, forced-SSE→JSON, and non-streaming paths) — truncated turns with text but no tool call no longer surface as clean `end_turn`, so agents continue instead of halting mid-task
+- **Translator/Responses**: recognize `response.incomplete` / `status: incomplete` as terminal stream events
+- **Muse Spark**: raise `MUSE_SPARK_MIN_OUTPUT_TOKENS` floor 8000 → 32000 (matches `DEFAULT_MIN_TOKENS` agent-turn floor; safe under 131072 contributor caps and 1M ceiling)
+
 # v0.5.100 (2026-10-08)
 
 ## Merge
