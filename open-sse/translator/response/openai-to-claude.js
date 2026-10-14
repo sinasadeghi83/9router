@@ -136,8 +136,11 @@ export function openaiToClaudeResponse(chunk, state) {
   }
 
   // Handle reasoning (thinking) across vendor shapes - GLM/DeepSeek/Qwen/MiniMax/etc.
+  // Drop when a Claude client never enabled thinking: emitting signature-less
+  // thinking blocks leaks reasoning into the message or aborts before tool_use.
+  // Undefined (non-Claude source or unknown) preserves legacy emit.
   const reasoningContent = extractReasoningText(delta);
-  if (reasoningContent) {
+  if (reasoningContent && state?.clientWantsThinking !== false) {
     stopTextBlock(state, results);
 
     if (!state.thinkingBlockStarted) {

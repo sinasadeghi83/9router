@@ -267,6 +267,18 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames)
     : responseBody;
   const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
+  // Drop signature-less thinking blocks when the Claude client never enabled
+  // thinking — otherwise reasoning leaks into the visible message.
+  if (isClaudeMessageResponse && Array.isArray(translatedResponse.content)) {
+    const t = body?.thinking;
+    const effort = body?.output_config?.effort;
+    const wantsThinking = (t && typeof t === "object" && (t.type === "enabled" || t.type === "adaptive"))
+      || (typeof effort === "string" && effort && !/^(none|off)$/i.test(effort));
+    if (!wantsThinking && translatedResponse.content.some((c) => c?.type === "thinking")) {
+      translatedResponse.content = translatedResponse.content.filter((c) => c?.type !== "thinking");
+      if (translatedResponse.content.length === 0) translatedResponse.content = [{ type: "text", text: "" }];
+    }
+  }
   // Responses-format translation produces a `object:"response"` body with no
   // `choices`; skip the Chat-Completions-specific post-processing below for it.
   const isResponsesResponse = sourceFormat === FORMATS.OPENAI_RESPONSES && translatedResponse?.object === "response";
