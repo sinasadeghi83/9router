@@ -255,7 +255,8 @@ export class OpenCodeGoExecutor extends DefaultExecutor {
     // Same muse-spark floor/ceiling as the oc lane (#4254); undefined → 32000 so a
     // bare client probe never hits the upstream "`max_output_tokens` >= …" 400.
     if (isMuseSparkModel(model || out.model)) {
-      out.max_output_tokens = clampMuseSparkOutputTokens(out.max_output_tokens);
+      const hasTools = Array.isArray(out.tools) && out.tools.length > 0;
+      out.max_output_tokens = clampMuseSparkOutputTokens(out.max_output_tokens, hasTools);
     }
     if (out.reasoning_effort !== undefined && out.reasoning === undefined) {
       out.reasoning = { effort: out.reasoning_effort, summary: "auto" };

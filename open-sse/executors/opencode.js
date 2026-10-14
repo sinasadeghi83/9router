@@ -437,7 +437,8 @@ export class OpenCodeExecutor extends BaseExecutor {
       // muse-spark spends its budget on internal reasoning; clamp to the safe
       // window (#4254) — shared helper so go/zen lanes behave the same.
       if (isMuseSparkModel(baseModelId(model || body?.model))) {
-        body.max_output_tokens = clampMuseSparkOutputTokens(body.max_output_tokens);
+        const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+        body.max_output_tokens = clampMuseSparkOutputTokens(body.max_output_tokens, hasTools);
       }
       normalizeOpencodeReasoning(model, body);
       body.stream = true;

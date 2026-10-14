@@ -345,9 +345,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // returns status:"incomplete" with no tool call (#4254). The opencode executors clamp
   // this themselves, but the `muse` provider runs through DefaultExecutor — floor it
   // here centrally so a small client max_tokens can't truncate the turn into a clean stop.
+  // Tool-heavy turns get the higher 64k floor (preamble + reasoning + call in one go).
   if (targetFormat === FORMATS.OPENAI_RESPONSES && isMuseSparkModel(model)) {
     const cap = translatedBody.max_output_tokens ?? translatedBody.max_completion_tokens ?? translatedBody.max_tokens;
-    translatedBody.max_output_tokens = clampMuseSparkOutputTokens(cap);
+    const hasTools = Array.isArray(translatedBody.tools) && translatedBody.tools.length > 0;
+    translatedBody.max_output_tokens = clampMuseSparkOutputTokens(cap, hasTools);
     delete translatedBody.max_tokens;
     delete translatedBody.max_completion_tokens;
   }

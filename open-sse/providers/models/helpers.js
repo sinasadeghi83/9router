@@ -32,13 +32,17 @@ export function isMuseSparkModel(modelId) {
 // text; below ~32k it exhausts the cap while still reasoning and returns
 // status:"incomplete" with output:[] (#4254). Floor matches DEFAULT_MIN_TOKENS so
 // agent turns (Claude-with-tools floor 32k) never arrive under-budgeted.
-// Upstream ceiling for muse-spark-1.3 max output is 131072.
+// Tool-heavy agentic turns burn far more (preamble + reasoning + function_call in one
+// response), so they get a higher floor. Upstream ceiling for muse-spark-1.3 max
+// output is 131072.
 export const MUSE_SPARK_MIN_OUTPUT_TOKENS = 32000;
+export const MUSE_SPARK_TOOL_MIN_OUTPUT_TOKENS = 64000;
 export const MUSE_SPARK_MAX_OUTPUT_TOKENS = 131072;
 
-export function clampMuseSparkOutputTokens(value) {
+export function clampMuseSparkOutputTokens(value, hasTools = false) {
+  const floor = hasTools ? MUSE_SPARK_TOOL_MIN_OUTPUT_TOKENS : MUSE_SPARK_MIN_OUTPUT_TOKENS;
   const cap = Number(value);
-  if (!Number.isFinite(cap) || cap < MUSE_SPARK_MIN_OUTPUT_TOKENS) return MUSE_SPARK_MIN_OUTPUT_TOKENS;
+  if (!Number.isFinite(cap) || cap < floor) return floor;
   if (cap > MUSE_SPARK_MAX_OUTPUT_TOKENS) return MUSE_SPARK_MAX_OUTPUT_TOKENS;
   return cap;
 }

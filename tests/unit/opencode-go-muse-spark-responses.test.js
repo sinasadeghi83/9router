@@ -103,7 +103,7 @@ describe("OpenCodeGoExecutor routing + sanitization", () => {
       reasoning_effort: "high",
     };
     const out = ex.transformRequest(MODEL, body, true, {});
-    expect(out.max_output_tokens).toBe(32000); // clamped to muse-spark floor (#4254)
+    expect(out.max_output_tokens).toBe(64000); // tool-heavy turn: higher muse-spark floor
     expect(out.max_tokens).toBeUndefined();
     expect(out.reasoning).toEqual({ effort: "high", summary: "auto" });
     expect(out.stream).toBe(true);
