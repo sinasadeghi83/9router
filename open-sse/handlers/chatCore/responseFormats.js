@@ -225,7 +225,10 @@ export function responsesToOpenAICompletion(responseBody) {
   if (!message.content && !message.tool_calls) message.content = "";
 
   const responseDone = responseBody.status === "completed" || responseBody.status === "done";
-  const finishReason = hasToolCalls ? "tool_calls" : (responseDone ? "stop" : (responseBody.status || "stop"));
+  // A truncated turn (upstream hit the output cap before emitting the tool call)
+  // must surface as length, never leak the raw "incomplete" string into a clean stop.
+  const responseTruncated = responseBody.status === "incomplete";
+  const finishReason = hasToolCalls ? "tool_calls" : (responseTruncated ? "length" : (responseDone ? "stop" : (responseBody.status || "stop")));
 
   const usage = responseBody.usage || {};
   // Per Responses API spec, input_tokens is already cache-inclusive.

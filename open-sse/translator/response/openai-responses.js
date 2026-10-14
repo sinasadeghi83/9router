@@ -515,7 +515,11 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // Flush: send final chunk with finish_reason
     if (state.finishReasonSent || !state.started) return null;
 
-    const finishReason = computeFinishReason(state);
+    // No terminal event arrived (upstream closed early): never fabricate a clean
+    // STOP with no tool call — report LENGTH so the agent retries/continues
+    // instead of stopping mid-task as if the turn finished normally.
+    const sawToolCall = state.toolCallIndex > 0 || state.currentToolCallId;
+    const finishReason = sawToolCall ? computeFinishReason(state) : OPENAI_FINISH.LENGTH;
 
     state.finishReasonSent = true;
     state.finishReason = finishReason;
