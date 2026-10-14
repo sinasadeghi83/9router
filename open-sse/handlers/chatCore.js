@@ -341,7 +341,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
 
   // Muse Spark spends most of its token budget on internal reasoning before emitting
-  // text; below ~8k max_output_tokens it exhausts the cap while still reasoning and
+  // text; below ~32k max_output_tokens it exhausts the cap while still reasoning and
   // returns status:"incomplete" with no tool call (#4254). The opencode executors clamp
   // this themselves, but the `muse` provider runs through DefaultExecutor — floor it
   // here centrally so a small client max_tokens can't truncate the turn into a clean stop.

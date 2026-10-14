@@ -29,9 +29,11 @@ export function isMuseSparkModel(modelId) {
 }
 
 // Muse Spark spends most of its token budget on internal reasoning before emitting
-// text; below ~8k it exhausts the cap while still reasoning and returns
-// status:"incomplete" with output:[] (#4254). Upstream ceiling is 1M (400 above).
-export const MUSE_SPARK_MIN_OUTPUT_TOKENS = 8000;
+// text; below ~32k it exhausts the cap while still reasoning and returns
+// status:"incomplete" with output:[] (#4254). Floor matches DEFAULT_MIN_TOKENS so
+// agent turns (Claude-with-tools floor 32k) never arrive under-budgeted.
+// Upstream ceiling is 1M (400 above).
+export const MUSE_SPARK_MIN_OUTPUT_TOKENS = 32000;
 export const MUSE_SPARK_MAX_OUTPUT_TOKENS = 1000000;
 
 export function clampMuseSparkOutputTokens(value) {

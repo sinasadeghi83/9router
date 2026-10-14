@@ -273,10 +273,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         const message = { role: "assistant", content: textContent || (hasToolCalls ? null : "") };
         if (hasToolCalls) message.tool_calls = toolCalls;
         const responseDone = jsonResponse.status === "completed" || jsonResponse.status === "done";
+        // Any incomplete status means the turn was truncated before the model
+        // finished — reason-agnostic, always "length" when no tool call was emitted.
         const finishReason = hasToolCalls ? "tool_calls"
           : responseDone ? "stop"
-          : jsonResponse.status === "incomplete"
-            ? (jsonResponse.incomplete_details?.reason === "max_output_tokens" ? "length" : "stop")
+          : jsonResponse.status === "incomplete" ? "length"
             : (jsonResponse.status || "stop");
         finalResp = {
           id: jsonResponse.id || `chatcmpl-${Date.now()}`,

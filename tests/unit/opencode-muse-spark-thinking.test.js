@@ -161,7 +161,7 @@ describe("OpenCode Free Muse Spark thinking", () => {
       });
 
       expect(out.reasoning).toEqual({ effort: "high", summary: "auto" });
-      expect(out.max_output_tokens).toBe(8000); // clamped to muse-spark floor (#4254)
+      expect(out.max_output_tokens).toBe(32000); // clamped to muse-spark floor (#4254)
       expect(out.max_tokens).toBeUndefined();
     }
   });
@@ -214,7 +214,8 @@ describe("OpenCode Free Muse Spark thinking", () => {
     // User message, function_call, function_call_output, and next user message survive
     const types = out.input.map((item) => item.type);
     expect(types).toEqual(["message", "function_call", "function_call_output", "message"]);
-    // Tools flattened and empty properties added
+    // Tools flattened and empty properties added; free-tier fingerprint
+    // quartet (bash/glob/grep/read) appended as unavailable decoys
     expect(out.tools).toEqual([
       {
         type: "function",
@@ -222,6 +223,12 @@ describe("OpenCode Free Muse Spark thinking", () => {
         description: "Run shell command",
         parameters: { type: "object", properties: {} },
       },
+      ...["bash", "glob", "grep", "read"].map((name) => ({
+        type: "function",
+        name,
+        description: "This tool is currently unavailable and must not be used.",
+        parameters: { type: "object", properties: {} },
+      })),
     ]);
   });
 });

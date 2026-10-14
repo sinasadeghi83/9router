@@ -302,7 +302,7 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     }
     delete out.max_tokens;
     delete out.max_completion_tokens;
-    // Same muse-spark floor/ceiling as the oc lane (#4254); undefined → 8000 so a
+    // Same muse-spark floor/ceiling as the oc lane (#4254); undefined → 32000 so a
     // bare client probe never hits the upstream "`max_output_tokens` >= …" 400.
     if (isMuseSparkModel(model || out.model)) {
       out.max_output_tokens = clampMuseSparkOutputTokens(out.max_output_tokens);

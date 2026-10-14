@@ -640,8 +640,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
-  // Response completed (or truncated — response.incomplete carries
-  // incomplete_details.reason, e.g. "max_output_tokens" → finish "length")
+  // Response completed (or truncated — any response.incomplete means the turn was
+  // cut before the model finished; with no tool call it must surface as "length",
+  // never a clean stop. Reason-agnostic: upstreams may send other reasons or omit
+  // incomplete_details entirely.)
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
@@ -656,8 +658,9 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     }
 
     if (!state.finishReasonSent) {
+      const sawToolCall = state.toolCallIndex > 0 || state.currentToolCallId;
       const finishReason = eventType === "response.incomplete"
-        ? (data.response?.incomplete_details?.reason === "max_output_tokens" ? OPENAI_FINISH.LENGTH : computeFinishReason(state))
+        ? (sawToolCall ? computeFinishReason(state) : OPENAI_FINISH.LENGTH)
         : computeFinishReason(state);
 
       state.finishReasonSent = true;

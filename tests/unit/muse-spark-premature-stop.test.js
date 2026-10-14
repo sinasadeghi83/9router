@@ -46,10 +46,12 @@ describe("muse spark output floor", () => {
     expect(isMuseSparkModel("gpt-5-codex")).toBe(false);
   });
 
-  it("raises small caps to the 8000 floor", () => {
-    expect(clampMuseSparkOutputTokens(1024)).toBe(8000);
-    expect(clampMuseSparkOutputTokens(undefined)).toBe(8000);
+  it("raises small caps to the 32000 floor", () => {
+    expect(clampMuseSparkOutputTokens(1024)).toBe(32000);
+    expect(clampMuseSparkOutputTokens(undefined)).toBe(32000);
+    expect(clampMuseSparkOutputTokens(8000)).toBe(32000);
     expect(clampMuseSparkOutputTokens(32000)).toBe(32000);
+    expect(clampMuseSparkOutputTokens(64000)).toBe(64000);
   });
 });
 
@@ -80,6 +82,42 @@ describe("incomplete responses surface as length, not a clean stop", () => {
     const claude = responsesToClaudeMessage(INCOMPLETE_BODY);
     expect(claude.stop_reason).toBe(fromOpenAIFinish("length", "claude"));
     expect(claude.stop_reason).toBe("max_tokens");
+  });
+});
+
+describe("streaming response.incomplete is reason-agnostic", () => {
+  const streamingState = () => ({
+    started: true,
+    finishReasonSent: false,
+    toolCallIndex: 0,
+    currentToolCallId: null,
+    chatId: "chatcmpl-test",
+    created: 1700000000,
+    model: "muse-spark-1.3",
+  });
+  const incompleteEvent = (reason) => ({
+    type: "response.incomplete",
+    response: {
+      ...(reason === undefined ? {} : { incomplete_details: { reason } }),
+      usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+    },
+  });
+
+  it("maps incomplete with a non-max reason to length", () => {
+    const chunk = openaiResponsesToOpenAIResponse(incompleteEvent("content_filter"), streamingState());
+    expect(chunk.choices[0].finish_reason).toBe("length");
+  });
+
+  it("maps incomplete with missing details to length", () => {
+    const chunk = openaiResponsesToOpenAIResponse(incompleteEvent(undefined), streamingState());
+    expect(chunk.choices[0].finish_reason).toBe("length");
+  });
+
+  it("keeps tool_calls priority when a call was seen before incomplete", () => {
+    const state = streamingState();
+    state.toolCallIndex = 1;
+    const chunk = openaiResponsesToOpenAIResponse(incompleteEvent("content_filter"), state);
+    expect(chunk.choices[0].finish_reason).toBe("tool_calls");
   });
 });
 

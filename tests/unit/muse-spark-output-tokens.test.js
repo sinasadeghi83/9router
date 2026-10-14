@@ -7,7 +7,7 @@
  * with max_tokens ≤ ~500 return HTTP 200 with status:"incomplete" and output:[].
  *
  * Fix: in OpenCodeExecutor.transformRequest, clamp max_output_tokens for muse-spark
- * models to [8000, 1_000_000] (upstream rejects requests above 1e6).
+ * models to [32000, 1_000_000] (upstream rejects requests above 1e6).
  *
  * These tests verify the clamping logic via the transformRequest output.
  */
@@ -39,7 +39,7 @@ describe("isMuseSparkModel — model detection", () => {
 // ── clamping logic ──────────────────────────────────────────────────────────
 
 describe("muse-spark max_output_tokens clamping (#4254)", () => {
-  it("clamps undefined to MUSE_MIN (8000)", () => {
+  it("clamps undefined to MUSE_MIN (32000)", () => {
     expect(clampMuseOutputTokens(undefined)).toBe(MUSE_MIN);
   });
 
@@ -59,12 +59,12 @@ describe("muse-spark max_output_tokens clamping (#4254)", () => {
     expect(clampMuseOutputTokens(1000)).toBe(MUSE_MIN);
   });
 
-  it("leaves 8000 unchanged", () => {
-    expect(clampMuseOutputTokens(8000)).toBe(8000);
+  it("clamps 8000 to MUSE_MIN", () => {
+    expect(clampMuseOutputTokens(8000)).toBe(MUSE_MIN);
   });
 
-  it("leaves 16000 unchanged", () => {
-    expect(clampMuseOutputTokens(16000)).toBe(16000);
+  it("clamps 16000 to MUSE_MIN", () => {
+    expect(clampMuseOutputTokens(16000)).toBe(MUSE_MIN);
   });
 
   it("leaves 32000 unchanged", () => {
