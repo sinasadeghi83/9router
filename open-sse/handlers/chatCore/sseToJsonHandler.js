@@ -268,7 +268,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           }
         };
       } else if (sourceFormat === FORMATS.CLAUDE) {
-        finalResp = responsesToClaudeMessage(jsonResponse);
+        // Responses SSE carries no model id (converter defaults to "unknown") —
+        // backfill the request model so the Claude message names the served model.
+        finalResp = responsesToClaudeMessage(!jsonResponse.model || jsonResponse.model === "unknown"
+          ? { ...jsonResponse, model }
+          : jsonResponse);
       } else {
         const message = { role: "assistant", content: textContent || (hasToolCalls ? null : "") };
         if (hasToolCalls) message.tool_calls = toolCalls;
