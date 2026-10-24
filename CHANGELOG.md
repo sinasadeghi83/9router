@@ -1,3 +1,11 @@
+# v0.5.110 (2026-10-24)
+
+Merges upstream `master` v0.5.105–v0.5.109 into `master-sina`, preserving Sina customizations.
+
+- **Upstream**: Smart Router (System One) with adaptive session stickiness; reference-image inputs for Gemini/Antigravity; web-provider executors (deepseek-web, gemini-web, muse-web, chatgpt-web, uc-web, veoaifree-web) + browser pool; SenseNova provider; Ollama System One decision models; RTK custom system prompt; Codex STT transcription; combo fallthrough fixes; NUL-byte DB hardening; Ollama Cloud `/api/balance`.
+- **Preserved (sina)**: `@sinatechs/9router` CLI identity + pnpm workspace build; Muse Spark output-floor/truncation fixes; Responses converters (`responseFormats.js`) with output-item ids; `OPENAI_SERVICE_TIERS` passthrough; GitBook publishing from `master-sina`.
+- **Conflicts resolved (4)**: `cli/package.json` (sina name + upstream version), `package.json` (upstream comments + `comment_playwright_core`), `open-sse/handlers/chatCore/sseToJsonHandler.js` (union: sina Responses converters + upstream `ROLE`/`RESPONSES_ITEM`/`extractReasoningText`), `open-sse/translator/schema/index.js` (union of finish/stream-events/service-tier exports).
+
 # v0.5.109 (2026-10-23)
 
 ## Features
