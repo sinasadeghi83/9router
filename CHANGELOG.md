@@ -1,3 +1,7 @@
+# v0.5.111 (2026-10-24)
+
+- **Deps**: sync `pnpm-lock.yaml` with the merged `package.json` (adds `ajv`, `playwright-core`, `wreq-js`, `ws`; drops `express`, `http-proxy-middleware`, `react-is`, `selfsigned`; bumps `next`, `eslint-config-next`, `monaco-editor`, `undici`) so CI `pnpm install --frozen-lockfile` passes again.
+
 # v0.5.110 (2026-10-24)
 
 Merges upstream `master` v0.5.105–v0.5.109 into `master-sina`, preserving Sina customizations.
