@@ -1,3 +1,44 @@
+# v0.5.112 (2026-10-28)
+
+## Features
+- **MiniMax Code**: add lease auth mode that rides the desktop app's sign-in through a named-pipe/unix-socket broker (length-prefixed JSON protocol, broker-owned token refresh — no refresh token held locally since MiniMax tokens are single-use), with a dashboard lease button and usage attribution
+- **Nace Drex**: add the `nace` provider to the System One lane with `drex`, `drex-v2.0` and `drex-max`
+- **CommandCode**: align request headers with the official CLI 1.88.0 through a shared `commandCodeHeaders` service
+- **Codex**: add `gpt-6.1-terra` (responses-lite lane, GPT-6-Lite thinking levels)
+
+## Fixes
+- **NVIDIA NIM**: normalize assistant `reasoning` aliases to `reasoning_content` before forwarding, avoiding NIM's duplicate-field 400 when clients send both.
+- **Lazy Runtime**: make the on-demand wreq-js/playwright-core installer work inside published builds — fetch `createRequire` at runtime instead of the bundler-stubbed static import, mark the runtime-dir `import()` calls `webpackIgnore` so file URLs are not captured as bundle chunks, anchor npm to the runtime dir with a minimal `package.json`, and wipe + reinstall once when npm exits 0 on a partially-extracted package (#5245)
+- **Docker**: bake `wreq-js` and `playwright-core` into the runner image's `node_modules` (builder-stage isolated install) so OpenCode Free resolves without runtime downloads (#5245)
+- **Chat**: surface upstream SSE `error` frames in non-streaming responses — answer with the upstream status (4xx/5xx) and message instead of swallowing them into a generic 502
+- **Translator**: enforce Gemini protobuf type predicates on schema `items` and `properties` instead of forwarding shapes the upstream would silently mistype
+- **Providers**: keep full `LLM|id|secret` (Muse) key strings opaque in bulk-add instead of splitting on the first pipe into name/key, auto-naming them LLM 1, LLM 2, …
+- **DeepSeek**: replace the vendored PoW hash implementation with a noble-hashes keccak port (DeepSeekHashV1, SHA3-256 with round 0 skipped), shrinking `deepseek-pow-hash.js` by ~430 lines
+- **GitHub Copilot**: apply Claude 5.5 thinking rules to Copilot's dotted model ids (`claude-opus-5.5*`, `claude-sonnet-5.5`) and make `claude-haiku-5.5` adaptive-only on its Anthropic-native shim, whose budget-shaped thinking comes back 400
+
+# v0.5.111 (2026-10-26)
+
+## Features
+- **Ollama**: add `ollama-local` TTS provider serving the Phonon family (15 tags, 38 preset voices), normalizing the requested format to wav/pcm, falling back to an installed tag and the `default` voice, and wrapping raw PCM in a WAV header so the dashboard can preview it
+- **Ollama**: add `ollama-local` embedding adapter for `/v1/embeddings`, normalizing a saved host that carries a `/v1` or `/v1/embeddings` suffix and sending a bearer token only when an API key is configured; catalog the 14 embedding model families with their dimensions
+- **Providers**: add Runcrate (`rc`) — OpenAI-compatible upstream serving DeepSeek, GLM, Qwen and gpt-oss models, validated through `GET /api/v1/billing/balance` because the public `/v1/models` answers 200 for any key
+- **CommandCode**: add Kimi K3.1 Pro to the catalog with the upstream id kept verbatim, riding the existing NDJSON `/alpha/generate` lane
+- **OpenCode Go**: add Kimi K3.1 Pro on the chat lane with vision/video input, 1,048,576 context, 131,072 max output and dedicated K3 pricing
+
+## Fixes
+- **CLI Tools**: stop the Pi card from resetting every `contextWindow`/`maxTokens` in `~/.pi/agent/models.json` on Apply, add per-model context-window and max-output selectors, and sanitize corrupt cap values instead of writing them back
+- **CLI Tools**: treat `name === id` as unset on Apply so a hand-edited Pi model label is no longer overwritten
+- **OpenCode**: normalize a caller tool that collides with the OpenCode fingerprint in place (keeping the caller's name and adopting the fingerprint schema) instead of aliasing it to `<name>_client` and restoring it on the response (#4971, #5011)
+- **OpenCode Free**: restore the free tier by sending the TLS ClientHello the upstream accepts (via optional `wreq-js`, fail-open to native fetch), minting session ids from the current time instead of a sha256 digest, and always pairing the CLI `<env>` system marker with a declared tool list
+- **OpenCode Free**: cap the published context window of `oc/deepseek-v4.1-flash-free` at 330k so clients compact before the backend's limit (#5097)
+- **Translator**: convert `image_url` parts inside `role:"tool"` messages to Claude image blocks instead of forwarding them verbatim and failing with a 400 (#5125)
+- **Headroom**: compress only text leaves and copy them back into the original fields, preserving native Claude documents, tool-use ids/inputs, tool results, signed thinking, citations and cache controls (#4670)
+- **DeepSeek**: send `deepseek-flash` upstream for `deepseek-v4.1-flash`, whose catalog id the API rejects (#4940)
+- **Claude**: keep adaptive thinking for Haiku 5.5 and downgrade to `enabled/10000` only below major version 5 (#5183)
+- **Thinking**: keep `reasoning_effort: max` for GPT-5.6 / GPT-6 served through OpenAI Compatible nodes instead of clamping it to `xhigh` (#5186)
+- **Codex Image**: drive the `image_generation` tool call from `gpt-6-sol` instead of the legacy `gpt-5.6-terra` host, and add `cx/gpt-6-sol-image`; drop the `gpt-5.6-{sol,terra,luna}-image` aliases they supersede
+- **Capabilities**: match `*gpt-6*image*` before the generic `gpt-6` family pattern so `gpt-6-sol-image` resolves as an image model instead of inheriting the chat caps (vision/reasoning/1.05M window) and losing `imageOutput`
+
 # v0.5.111 (2026-10-24)
 
 - **Deps**: sync `pnpm-lock.yaml` with the merged `package.json` (adds `ajv`, `playwright-core`, `wreq-js`, `ws`; drops `express`, `http-proxy-middleware`, `react-is`, `selfsigned`; bumps `next`, `eslint-config-next`, `monaco-editor`, `undici`) so CI `pnpm install --frozen-lockfile` passes again.
@@ -23,6 +64,8 @@ Merges upstream `master` v0.5.105–v0.5.109 into `master-sina`, preserving Sina
 - **STT**: add Codex OAuth transcription provider (`cx/transcribe`), reusing existing Codex OAuth chat connections with 24 kHz PCM16 WAV conversion and bounded private temp files (#5074)
 
 ## Fixes
+- **CodeBuddy**: send the plugin's request/conversation id headers (`X-Request-ID`, `X-Conversation-ID`, `X-Conversation-Request-ID`, `X-Conversation-Message-ID`) on CN and intl chat requests — without them the gateway's channel check rejects every call with `400 / 11128 "request illegal"`
+- **CodeBuddy**: align the `#5024` backoff tests with the current request-scoped contract — `checkFallbackError` reports `requestScoped: true` for unclassified 4xx, and a combo now advances past a malformed CodeBuddy body instead of stopping on the first member
 - **Combos**: advance past request-scoped 4xx rejections (validation, unsupported parameter, context overflow) instead of terminating combo (#5057)
 - **Combos**: fall through to next member when streaming response returns HTTP 200 but produces zero content frames (#ca7b540)
 - **Combos**: try next model when provider returns HTTP 400 for insufficient credits or balance too low (#4713)
@@ -84,30 +127,6 @@ Merges upstream `master` v0.5.105–v0.5.109 into `master-sina`, preserving Sina
 - **Models**: expose no-auth free providers in `/v1/models`; prune custom models on node deletion
 - **Usage**: token fallback for `input_tokens` rows in 24h/today stats; stable key masking
 - **Dashboard**: unclip proxy dropdown and tooltips via body portal
-# v0.5.103 (2026-10-15)
-
-## Fixes
-- **Stream/Responses**: restore `event:` name into typeless SSE `data:` payloads before `translateResponse` (Meta-style event-only `output_text`/`function_call_arguments`/`reasoning` deltas no longer drop to `null` and end turns preamble-only)
-- **Translator**: pass `tool_choice` (`auto`/`none`/`required`/specific function) and `parallel_tool_calls` through OpenAI → Responses instead of dropping to default `auto`
-- **Translator/Responses**: handle `response.function_call_arguments.done` / `response.custom_tool_call_input.done` (emit once when no deltas arrived) and read `item.input` for `custom_tool_call` `output_item.done`
-- **Claude**: suppress signature-less `thinking` blocks when the client never enabled thinking (streaming + non-streaming), so reasoning no longer leaks into visible message text
-- **Muse Spark**: tool-aware output floor — 32k without tools, 64k with tools (cap 131072) across chatCore and opencode/go/zen executors, so agentic turns stop truncating into preamble-only `incomplete` turns
-
-# v0.5.102 (2026-10-14)
-
-## Fixes
-- **Translator**: surface ANY Muse Spark truncation as `length`/`max_tokens` regardless of `incomplete_details.reason` (streaming, forced-SSE→JSON, and non-streaming paths) — truncated turns with text but no tool call no longer surface as clean `end_turn`, so agents continue instead of halting mid-task
-- **Translator/Responses**: recognize `response.incomplete` / `status: incomplete` as terminal stream events
-- **Muse Spark**: raise `MUSE_SPARK_MIN_OUTPUT_TOKENS` floor 8000 → 32000 (matches `DEFAULT_MIN_TOKENS` agent-turn floor; safe under 131072 contributor caps and 1M ceiling)
-
-# v0.5.100 (2026-10-08)
-
-## Merge
-- Merge `master` v0.5.99 into `master-sina`: Bedrock provider with AWS SSO, Hermes per-profile configuration, per-API-key access control, Netlify relay proxy pool, MiniMax Code provider, Antigravity Gemini 3.8 catalog refresh, dashboard mobile fixes
-- Preserve sina customizations: `@sinatechs/9router` CLI name, port 20128, pnpm workspace scripts, sina repository metadata
-- **Translator/Gemini**: combine both duplicate `tool_call_id` fixes — queued per-id tool responses and turn-scoped names (#4273) with uniquified emitted ids (#4532)
-- **Codex**: keep null-aware `toolStrict` strict preservation through the merge
-- Restore `enquirer` and `@aws-sdk/credential-providers` dependencies from `master` (Bedrock SSO) with an updated `pnpm-lock.yaml`
 
 # v0.5.99 (2026-10-08)
 
@@ -139,12 +158,6 @@ Merges upstream `master` v0.5.105–v0.5.109 into `master-sina`, preserving Sina
 - **Ollama**: report `prompt_eval_cached_count` as cached tokens in usage tracking
 - **Muse**: route Responses-only models to declared transport and nest reasoning effort
 - **TTS**: accept server model and voice in self-hosted example
-
-# v0.5.96 (2026-10-07)
-
-## Fixes
-- **Translator**: keep `service_tier` through the Anthropic → OpenAI pivot
-- **Translator/Responses**: map `response.incomplete` (`max_output_tokens`) to `finish_reason: length` on streaming and non-streaming paths, so truncated turns no longer surface as empty `stop` with zero usage
 
 # v0.5.95 (2026-10-01)
 
@@ -180,11 +193,6 @@ Merges upstream `master` v0.5.105–v0.5.109 into `master-sina`, preserving Sina
 - **CLI Tools**: replace `sk_9router` placeholder with first active dashboard API key
 - **Dashboard**: exclude hidden providers from usage stats provider list
 - **Capabilities**: add deepseek-v4-1-flash vision alias; add zed to live catalog providers
-- 
-# v0.5.92 (2026-09-27)
-
-## Fixes
-- **OpenCode**: clamp muse-spark `max_output_tokens` to [8000, 1M] on the go/zen lanes (was oc-only), fixing `400 max_output_tokens must be >= …` on Claude Code model probes for `muse-spark-1.3-contributor`
 
 # v0.5.91 (2026-09-26)
 
