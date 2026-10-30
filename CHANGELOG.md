@@ -1,3 +1,9 @@
+# v0.5.113 (2026-10-30)
+
+## Fixes
+- **Chat**: provider-level thinking default no longer shadows client intent — the `chatCore` guard now checks `extractThinking()` across all shapes (`output_config.effort`, `reasoning_effort`/`reasoning.effort`, `thinking`, `thinkingConfig`, `enable_thinking`) instead of only top-level `reasoning_effort`, fixing Anthropic-endpoint requests stuck at `medium` while Responses worked
+- **Providers**: `hasThinkingConfig()` delegates to the canonical `extractThinking()` extractor so future thinking shapes can't drift out of sync
+
 # v0.5.112 (2026-10-28)
 
 ## Features

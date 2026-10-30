@@ -113,16 +113,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (useTransport && credentials) credentials.runtimeTransport = useTransport;
   const stripList = getModelStrip(alias, model);
 
-  // Inject provider-level thinking config override (only if client hasn't set)
-  // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
-  if (providerThinking?.mode && providerThinking.mode !== "auto") {
+  // Inject provider-level thinking config override (only if client hasn't set
+  // any thinking intent in ANY shape: output_config.effort, reasoning_effort,
+  // reasoning.effort, thinking, thinkingConfig, enable_thinking).
+  // on → extended type (body.thinking), off → disabled, none/low/medium/high → effort type.
+  if (providerThinking?.mode && providerThinking.mode !== "auto" && !extractThinking(body)) {
     const mode = providerThinking.mode;
-    if (mode === "on" && !body.thinking) {
+    if (mode === "on") {
       console.log("Injecting provider-level thinking config override: on");
       body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
-    } else if (mode === "off" && !body.thinking) {
+    } else if (mode === "off") {
       body = { ...body, thinking: { type: "disabled" } };
-    } else if (!body.reasoning_effort) {
+    } else {
       body = { ...body, reasoning_effort: mode };
     }
   }

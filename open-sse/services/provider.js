@@ -1,5 +1,6 @@
 import { PROVIDERS } from "../config/providers.js";
 import { OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
+import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 
 const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
 const OPENAI_COMPATIBLE_DEFAULTS = {
@@ -160,9 +161,11 @@ export function isLastMessageFromUser(body) {
   return lastMsg?.role === "user";
 }
 
-// Check if request has thinking config
+// Check if request has thinking config (any shape: output_config.effort,
+// reasoning_effort, reasoning.effort, thinking, thinkingConfig, enable_thinking).
+// Delegates to the canonical extractor so new shapes can't drift out of sync.
 export function hasThinkingConfig(body) {
-  return !!(body.reasoning_effort || body.thinking?.type === "enabled");
+  return !!extractThinking(body);
 }
 
 // Normalize provider-native thinking config based on last message role.
