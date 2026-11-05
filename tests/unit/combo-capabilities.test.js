@@ -153,3 +153,51 @@ describe("aggregateComboCapabilities — nested combo resolution via comboLookup
     expect(caps.vision).toBe(false);
   });
 });
+
+describe("aggregateComboCapabilities — thinkingRange", () => {
+  const GEMINI_RANGE = { min: 0, max: 24576 };
+
+  it("keeps the range when the only member declares one", () => {
+    expect(aggregateComboCapabilities(["gemini/gemini-2.5-pro"]).thinkingRange).toEqual(GEMINI_RANGE);
+  });
+
+  it("is not lost when the primary member has no range (was always null)", () => {
+    const caps = aggregateComboCapabilities(["openai/gpt-4o", "gemini/gemini-2.5-pro"]);
+    expect(caps.thinkingRange).toEqual(GEMINI_RANGE);
+  });
+
+  it("does not depend on member order", () => {
+    const caps = aggregateComboCapabilities(["gemini/gemini-2.5-pro", "openai/gpt-4o"]);
+    expect(caps.thinkingRange).toEqual(GEMINI_RANGE);
+  });
+
+  it("stays null when no member declares a range", () => {
+    expect(aggregateComboCapabilities(["openai/gpt-4o", "openai/gpt-4o-mini"]).thinkingRange).toBeNull();
+  });
+
+  it("intersects ranges that overlap", () => {
+    const resolver = (id) => (id === "a/x" ? { thinkingRange: { min: 128, max: 32768 } }
+      : id === "b/y" ? { thinkingRange: { min: 0, max: 24576 } } : null);
+    const caps = aggregateComboCapabilities(["a/x", "b/y"], null, resolver);
+    expect(caps.thinkingRange).toEqual({ min: 128, max: 24576 });
+  });
+
+  it("falls back to the first declared range when ranges do not overlap", () => {
+    const resolver = (id) => (id === "a/x" ? { thinkingRange: { min: 0, max: 1000 } }
+      : id === "b/y" ? { thinkingRange: { min: 5000, max: 9000 } } : null);
+    const caps = aggregateComboCapabilities(["a/x", "b/y"], null, resolver);
+    expect(caps.thinkingRange).toEqual({ min: 0, max: 1000 });
+  });
+
+  it("resolves through nested combos", () => {
+    const lookup = { inner: ["openai/gpt-4o", "gemini/gemini-2.5-flash"] };
+    expect(aggregateComboCapabilities(["inner", "openai/gpt-4o"], lookup).thinkingRange).toEqual(GEMINI_RANGE);
+  });
+
+  it("returns a copy, not the shared member object", () => {
+    const resolver = (id) => (id === "a/x" ? { thinkingRange: { min: 0, max: 1000 } } : null);
+    const caps = aggregateComboCapabilities(["a/x", "openai/gpt-4o"], null, resolver);
+    caps.thinkingRange.max = 1;
+    expect(resolver("a/x").thinkingRange.max).toBe(1000);
+  });
+});

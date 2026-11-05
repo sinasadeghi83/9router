@@ -669,6 +669,10 @@ export const PATTERN_CAPABILITIES = [
  * Intersection: tools
  * Primary:      reasoning fields from the first (primary) model
  * Conservative: contextWindow = min; maxOutput = max
+ * Intersection: thinkingRange across the members that declare one (null = no clamp, so
+ *               members without a range don't constrain it). Taking it from the primary
+ *               alone returned null for any combo whose first member has no budget range,
+ *               hiding the bounds of the members that do.
  *
  * @param {string[]} comboModels
  * @param {Object|null} [comboLookup] optional map of combo name → models array for nested resolution
@@ -680,6 +684,20 @@ export const PATTERN_CAPABILITIES = [
  * @param {number} [_depth] internal recursion depth guard
  * @returns {object|null} full capabilities object, or null for empty input
  */
+// Combine the thinking budget ranges members declare. A member without one imposes no
+// clamp, so only declared ranges take part. The overlap is the span every declaring
+// member accepts; when they don't overlap at all, no single span is safe, so fall back
+// to the first declared range (the highest-priority member) rather than inventing one.
+function aggregateThinkingRange(allCaps) {
+  const ranges = allCaps
+    .map((c) => c?.thinkingRange)
+    .filter((r) => r && Number.isFinite(r.min) && Number.isFinite(r.max));
+  if (ranges.length === 0) return null;
+  const min = Math.max(...ranges.map((r) => r.min));
+  const max = Math.min(...ranges.map((r) => r.max));
+  return min <= max ? { min, max } : { ...ranges[0] };
+}
+
 export function aggregateComboCapabilities(comboModels, comboLookup = null, resolveCaps = null, _depth = 0) {
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
@@ -709,7 +727,7 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, reso
     reasoning:          first.reasoning,
     thinkingFormat:     first.thinkingFormat,
     thinkingCanDisable: first.thinkingCanDisable,
-    thinkingRange:      first.thinkingRange,
+    thinkingRange:      aggregateThinkingRange(allCaps),
     contextWindow: Math.min(...allCaps.map((c) => c.contextWindow)),
     maxOutput:     Math.max(...allCaps.map((c) => c.maxOutput)),
   };
