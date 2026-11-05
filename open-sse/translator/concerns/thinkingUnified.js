@@ -263,7 +263,14 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "")
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
-  const eff = none && !canDisable ? { mode: "level", level: "minimal" } : cfg;
+  let eff = none && !canDisable ? { mode: "level", level: "minimal" } : cfg;
+  // "ultra" exists only on models that declare it (Codex GPT-5.6 sol/terra). Everywhere else
+  // it would reach the wire verbatim (Claude/TokenRouter/Step 400), fall out of a budget
+  // table, or be clamped down to the lowest level (Gemini) — so map it to the strongest
+  // level the model does accept before any format-specific branch runs.
+  if (eff.mode === "level" && eff.level === "ultra" && !supportedLevels?.includes("ultra")) {
+    eff = { mode: "level", level: supportedLevels?.includes("max") ? "max" : "xhigh" };
+  }
 
   switch (fmt) {
     case "openai": {
