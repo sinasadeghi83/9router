@@ -1,3 +1,20 @@
+# v0.5.115 (2026-11-05)
+
+## Features
+- **Models**: `/v1/models` now follows the OpenAI spec — every entry carries `created` and `shutdown_date`, errors carry `message`/`type`/`param`/`code`, `DELETE /v1/models/{id}` answers with an OpenAI-shaped 405, and the list adds `has_more`/`first_id`/`last_id` plus a short `Cache-Control`
+- **Models**: entries are also readable as Anthropic ModelInfo and OpenRouter models — `type`, `created_at`, `display_name`, `max_input_tokens`, `max_tokens`, `supported_parameters` and `capabilities.{effort,thinking,image_input,pdf_input}`
+- **Models**: thinking levels are published per model (`capabilities.thinkingLevels`, `reasoning_efforts` limited to OpenAI's enum) from the live catalog when it lists them (Copilot, Qoder), else the static table, else inferred; combos publish the levels every reasoning seat accepts
+- **Models**: retrieval (`GET /v1/models/{id}`) works for every model kind, builds only the requested model instead of every provider's live catalog, and can fetch hidden combos; `GET /v1/models?kind=all|image|tts|…` widens the list
+- **Combos**: new `thinkingLevels` setting — pick the levels a combo advertises from the dashboard (chip picker with the derived default shown); `ultra` is now selectable as a default effort and as an advertised level
+- **Copilot**: the live catalog keeps each model's own `reasoning_effort` list
+
+## Fixes
+- **Translator**: `ultra` is mapped to `max` (or `xhigh`) for any model that does not declare it — it previously reached Claude/TokenRouter/Step verbatim (400), fell through to an unlimited budget on budget-based formats, or was clamped to the lowest level on Gemini
+
+## Notes
+- A combo named like a kind slug (`image`, `tts`, …) is now returned by `GET /v1/models/{slug}` instead of the kind list; the list stays at `/v1/models?kind={slug}`
+- `created` is `0` for models whose catalog carries no release date
+
 # v0.5.114 (2026-11-05)
 
 ## Features
