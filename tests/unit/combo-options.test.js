@@ -25,7 +25,7 @@ describe("normalizeComboOptions", () => {
 
   it("rejects out-of-range, non-integer, unknown and wrongly-typed fields", () => {
     const { errors } = normalizeComboOptions({
-      contextWindow: 10, maxOutputTokens: 1000.5, temperature: 3, reasoningEffort: "ultra", hidden: "yes", foo: 1, displayName: 42,
+      contextWindow: 10, maxOutputTokens: 1000.5, temperature: 3, reasoningEffort: "turbo", hidden: "yes", foo: 1, displayName: 42,
     });
     expect(errors.join("|")).toMatch(/contextWindow/);
     expect(errors.join("|")).toMatch(/maxOutputTokens must be a whole number/);

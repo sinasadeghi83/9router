@@ -13,7 +13,9 @@
 import { EFFORT_LEVELS, LEVEL_TO_BUDGET } from "../translator/concerns/thinking.js";
 import { FORMATS } from "../translator/formats.js";
 
-export const COMBO_REASONING_EFFORTS = ["none", ...EFFORT_LEVELS];
+// "ultra" sits above "max": Codex GPT-5.6 sol/terra take it natively; the translator maps
+// it to the strongest level any other model accepts (see applyFormat in thinkingUnified).
+export const COMBO_REASONING_EFFORTS = ["none", ...EFFORT_LEVELS, "ultra"];
 
 export const COMBO_OPTION_LIMITS = {
   displayName: { maxLength: 80 },
@@ -83,12 +85,36 @@ export function normalizeComboOptions(input) {
     else errors.push(`reasoningEffort must be one of: ${COMBO_REASONING_EFFORTS.join(", ")}`);
   }
 
+  // Levels the combo advertises on /v1/models (overrides the seat-derived set).
+  // Accepts an array or a comma-separated string; stored in canonical order.
+  if (!isUnset(input.thinkingLevels)) {
+    const raw = Array.isArray(input.thinkingLevels)
+      ? input.thinkingLevels
+      : typeof input.thinkingLevels === "string" ? input.thinkingLevels.split(",") : null;
+    if (!raw) {
+      errors.push("thinkingLevels must be a list of levels");
+    } else {
+      const wanted = new Set();
+      let bad = false;
+      for (const item of raw) {
+        const level = typeof item === "string" ? item.trim().toLowerCase() : "";
+        if (!level) continue;
+        if (COMBO_REASONING_EFFORTS.includes(level)) wanted.add(level);
+        else { errors.push(`thinkingLevels: '${String(item)}' is not one of: ${COMBO_REASONING_EFFORTS.join(", ")}`); bad = true; }
+      }
+      if (!bad && wanted.size > 0) value.thinkingLevels = COMBO_REASONING_EFFORTS.filter((l) => wanted.has(l));
+    }
+  }
+  if (value.thinkingLevels && value.reasoningEffort && !value.thinkingLevels.includes(value.reasoningEffort)) {
+    errors.push("reasoningEffort must be one of the selected thinkingLevels");
+  }
+
   if (input.hidden !== undefined && input.hidden !== null) {
     if (typeof input.hidden !== "boolean") errors.push("hidden must be a boolean");
     else if (input.hidden) value.hidden = true;
   }
 
-  const known = new Set(["displayName", "description", "contextWindow", "maxOutputTokens", "temperature", "topP", "reasoningEffort", "hidden"]);
+  const known = new Set(["displayName", "description", "contextWindow", "maxOutputTokens", "temperature", "topP", "reasoningEffort", "thinkingLevels", "hidden"]);
   for (const key of Object.keys(input)) {
     if (!known.has(key)) errors.push(`unknown option: ${key}`);
   }
@@ -139,7 +165,7 @@ function applyReasoningDefault(body, effort, format) {
       break;
     case FORMATS.GEMINI: {
       const gc = body.generationConfig && typeof body.generationConfig === "object" ? body.generationConfig : {};
-      body.generationConfig = { ...gc, thinkingConfig: { thinkingBudget: LEVEL_TO_BUDGET[effort] ?? -1 } };
+      body.generationConfig = { ...gc, thinkingConfig: { thinkingBudget: LEVEL_TO_BUDGET[effort === "ultra" ? "max" : effort] ?? -1 } };
       break;
     }
     default:
