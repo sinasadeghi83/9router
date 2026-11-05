@@ -6,7 +6,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
-import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle, Badge, SmartPolicyModal } from "@/shared/components";
+import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle, Badge, SmartPolicyModal, ComboOptionsFields, comboOptionsToDraft, draftToComboOptions, validateComboOptionsDraft } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
@@ -102,6 +102,7 @@ export default function CombosPage() {
   const filteredCombos = normalizedQuery
     ? combos.filter((c) => {
         if (String(c.name || "").toLowerCase().includes(normalizedQuery)) return true;
+        if (String(c.options?.displayName || "").toLowerCase().includes(normalizedQuery)) return true;
         return (c.models || []).some((m) => String(m).toLowerCase().includes(normalizedQuery));
       })
     : combos;
@@ -596,6 +597,8 @@ export default function CombosPage() {
           onClose={() => setShowCreateModal(false)}
           onSave={handleCreate}
           activeProviders={activeProviders}
+          getCaps={getCaps}
+          comboByName={Object.fromEntries(combos.map((c) => [c.name, c.models]))}
         />
       )}
 
@@ -607,6 +610,8 @@ export default function CombosPage() {
           onClose={() => setEditingCombo(null)}
           onSave={(data) => handleUpdate(editingCombo.id, data)}
           activeProviders={activeProviders}
+          getCaps={getCaps}
+          comboByName={Object.fromEntries(combos.map((c) => [c.name, c.models]))}
         />
       )}
 
@@ -669,6 +674,16 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   // generic patterns and under-report the limits. getCaps carries the server's
   // answer for /api/models.
   const comboCaps = aggregateComboCapabilities(combo.models, comboByName, getCaps);
+  const options = combo.options || {};
+  const ctxOverride = Number.isFinite(options.contextWindow);
+  const maxOverride = Number.isFinite(options.maxOutputTokens);
+  const shownCtx = ctxOverride ? options.contextWindow : comboCaps?.contextWindow;
+  const shownMax = maxOverride ? options.maxOutputTokens : comboCaps?.maxOutput;
+  const defaultsSummary = [
+    options.temperature !== undefined && `temp ${options.temperature}`,
+    options.topP !== undefined && `top_p ${options.topP}`,
+    options.reasoningEffort && `effort ${options.reasoningEffort}`,
+  ].filter(Boolean);
 
   return (
     <Card padding="sm" className={`group ${selected ? "ring-1 ring-primary/40 bg-primary/[0.03]" : ""}`}>
@@ -688,7 +703,15 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             <span className="material-symbols-outlined text-primary text-[18px]">layers</span>
           </div>
           <div className="min-w-0 flex-1">
-            <code className="block truncate font-mono text-sm font-medium">{combo.name}</code>
+            <div className="flex min-w-0 items-center gap-2">
+              <code className="truncate font-mono text-sm font-medium">{combo.name}</code>
+              {options.displayName && (
+                <span className="truncate text-xs text-text-muted" title="Display name">{options.displayName}</span>
+              )}
+              {options.hidden && (
+                <span className="shrink-0 rounded bg-black/5 px-1.5 py-0.5 text-[10px] text-text-muted dark:bg-white/5" title="Hidden from /v1/models">hidden</span>
+              )}
+            </div>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
               {combo.models.length === 0 ? (
                 <span className="text-xs text-text-muted italic">No models</span>
@@ -708,11 +731,17 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 <span className="text-[10px] text-text-muted">+{combo.models.length - 3} more</span>
               )}
             </div>
-            {comboCaps && (
-              <div className="mt-1 flex items-center gap-2 text-[10px] text-text-muted">
-                <span>ctx {fmtK(comboCaps.contextWindow)}</span>
+            {(comboCaps || ctxOverride || maxOverride || defaultsSummary.length > 0) && (
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-text-muted">
+                <span className={ctxOverride ? "font-medium text-primary" : ""} title={ctxOverride ? "Set in combo settings" : "Derived from models"}>ctx {fmtK(shownCtx)}</span>
                 <span className="opacity-40">·</span>
-                <span>max {fmtK(comboCaps.maxOutput)}</span>
+                <span className={maxOverride ? "font-medium text-primary" : ""} title={maxOverride ? "Set in combo settings" : "Derived from models"}>max {fmtK(shownMax)}</span>
+                {defaultsSummary.map((d) => (
+                  <span key={d} className="contents">
+                    <span className="opacity-40">·</span>
+                    <span className="font-medium text-primary" title="Request default from combo settings">{d}</span>
+                  </span>
+                ))}
               </div>
             )}
             {/* Fusion: judge picker (Auto = first model) */}
@@ -1178,10 +1207,14 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   );
 }
 
-function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null }) {
+function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null, getCaps = null, comboByName = {} }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
+  const [optionsDraft, setOptionsDraft] = useState(() => comboOptionsToDraft(combo?.options));
+  const optionErrors = validateComboOptionsDraft(optionsDraft);
+  const hasOptionErrors = Object.keys(optionErrors).length > 0;
+  const derivedCaps = aggregateComboCapabilities(models, comboByName, getCaps);
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -1272,7 +1305,8 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   const handleSave = async () => {
     if (!validateName(name)) return;
     setSaving(true);
-    await onSave({ name: name.trim(), models });
+    if (hasOptionErrors) return;
+    await onSave({ name: name.trim(), models, options: draftToComboOptions(optionsDraft) });
     setSaving(false);
   };
 
@@ -1346,6 +1380,15 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             </button>
           </div>
 
+          {/* Per-combo settings */}
+          <ComboOptionsFields
+            draft={optionsDraft}
+            onChange={setOptionsDraft}
+            errors={optionErrors}
+            derived={{ contextWindow: derivedCaps?.contextWindow, maxOutput: derivedCaps?.maxOutput }}
+            defaultOpen={Object.keys(combo?.options || {}).length > 0}
+          />
+
           {/* Actions */}
           <div className="flex flex-col gap-2 pt-1 sm:flex-row">
             <Button onClick={onClose} variant="ghost" fullWidth size="sm">
@@ -1355,7 +1398,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
               onClick={handleSave}
               fullWidth
               size="sm"
-              disabled={!name.trim() || !!nameError || saving}
+              disabled={!name.trim() || !!nameError || hasOptionErrors || saving}
             >
               {saving ? "Saving..." : isEdit ? "Save" : "Create"}
             </Button>
