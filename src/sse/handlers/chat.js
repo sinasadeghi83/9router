@@ -9,7 +9,7 @@ import {
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, getComboOptions } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
@@ -21,6 +21,8 @@ import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActi
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+import { detectFormat } from "open-sse/services/provider.js";
+import { applyComboRequestOptions, hasRequestOptions } from "open-sse/services/comboOptions.js";
 import { resolveSessionIdentity } from "open-sse/utils/sessionManager.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -28,6 +30,26 @@ import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
 import { resolveSmartChoice } from "../services/systemoneRouter.js";
+
+/**
+ * Apply a combo's request defaults (max output, temperature, top_p, reasoning
+ * effort) to the client body before it fans out to the combo's models.
+ * Fail-open: a lookup/apply error leaves the body untouched.
+ */
+async function withComboRequestOptions(body, comboName, request) {
+  try {
+    const options = await getComboOptions(comboName);
+    if (!hasRequestOptions(options)) return body;
+    const pathname = request?.url ? new URL(request.url).pathname : "";
+    const format = detectFormatByEndpoint(pathname, body) || detectFormat(body);
+    const { body: next, applied } = applyComboRequestOptions(body, options, format);
+    if (applied.length) log.debug("CHAT", `Combo "${comboName}" options applied: ${applied.join(", ")}`);
+    return next;
+  } catch (error) {
+    log.warn("CHAT", `Combo "${comboName}" options skipped: ${error?.message || error}`);
+    return body;
+  }
+}
 
 /**
  * Handle chat completion request
@@ -109,6 +131,7 @@ export async function handleChat(request, clientRawRequest = null) {
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
+    body = await withComboRequestOptions(body, modelStr, request);
     // Check for combo-specific strategy first, fallback to global
     const comboStrategies = settings.comboStrategies || {};
     const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
@@ -197,6 +220,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   if (!modelInfo.provider) {
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
+      // Nested combo: its own defaults fill what the outer combo/client left unset.
+      body = await withComboRequestOptions(body, modelStr, request);
       const chatSettings = await getSettings();
       // Check for combo-specific strategy first, fallback to global
       const comboStrategies = chatSettings.comboStrategies || {};

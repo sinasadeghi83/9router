@@ -79,6 +79,16 @@ export async function getModelInfo(modelStr) {
 }
 
 /**
+ * Get a combo's user-set options (display name, limits, request defaults).
+ * @returns {Promise<object|null>} options object, or null if not a combo
+ */
+export async function getComboOptions(modelStr) {
+  if (typeof modelStr !== "string" || !modelStr || modelStr.includes("/")) return null;
+  const combo = await getComboByName(modelStr);
+  return combo ? (combo.options || {}) : null;
+}
+
+/**
  * Check if model is a combo and get models list
  * @returns {Promise<string[]|null>} Array of models or null if not a combo
  */

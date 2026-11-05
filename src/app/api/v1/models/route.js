@@ -294,7 +294,7 @@ function comboSeatLimits(combo, combosByName, visiting = new Set()) {
       if (slash <= 0) {
         const nested = combosByName.get(seat);
         if (nested) {
-          const nestedLimits = comboSeatLimits(nested, combosByName, visiting);
+          const nestedLimits = comboLimits(nested, combosByName, visiting);
           if (Number.isFinite(nestedLimits.contextWindow)) contextWindow = Math.min(contextWindow, nestedLimits.contextWindow);
           if (Number.isFinite(nestedLimits.maxOutput)) maxOutput = Math.min(maxOutput, nestedLimits.maxOutput);
           continue;
@@ -311,6 +311,22 @@ function comboSeatLimits(combo, combosByName, visiting = new Set()) {
   return {
     contextWindow: Number.isFinite(contextWindow) ? contextWindow : undefined,
     maxOutput: Number.isFinite(maxOutput) ? maxOutput : undefined,
+  };
+}
+
+// A combo's own options (set in the dashboard) override the seat-derived
+// limits, field by field. Used for the published entry and when the combo is
+// a nested seat of another combo, so an inner override carries outward.
+function comboLimits(combo, combosByName, visiting = new Set()) {
+  const options = combo?.options || {};
+  const hasCtx = Number.isFinite(options.contextWindow);
+  const hasMax = Number.isFinite(options.maxOutputTokens);
+  const derived = hasCtx && hasMax
+    ? {}
+    : comboSeatLimits(combo, combosByName, visiting);
+  return {
+    contextWindow: hasCtx ? options.contextWindow : derived.contextWindow,
+    maxOutput: hasMax ? options.maxOutputTokens : derived.maxOutput,
   };
 }
 
@@ -389,21 +405,35 @@ export async function buildModelsList(kindFilter, options = {}) {
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
+    const options = combo.options || {};
+    // Hidden combos stay routable by name; they are only left out of the list.
+    if (options.hidden) continue;
     const entry = {
       id: combo.name,
       object: "model",
       owned_by: "combo",
     };
+    // OpenRouter-style `name` / `description` plus Anthropic-style `display_name`,
+    // so clients with either convention pick up the label.
+    if (options.displayName) {
+      entry.name = options.displayName;
+      entry.display_name = options.displayName;
+    }
+    if (options.description) entry.description = options.description;
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     } else {
+      const { contextWindow, maxOutput } = comboLimits(combo, combosByName);
       const comboCaps = aggregateComboCapabilities(combo.models, comboByName, comboSeatCapabilities);
-      if (comboCaps) entry.capabilities = comboCaps;
+      if (comboCaps) {
+        entry.capabilities = comboCaps;
+        if (Number.isFinite(contextWindow)) comboCaps.contextWindow = contextWindow;
+        if (Number.isFinite(maxOutput)) comboCaps.maxOutput = maxOutput;
+      }
       // Any seat can serve the request, so the only window a combo can promise is
       // its smallest. Combo entries were the only models on this endpoint that
       // published no limits at all, which leaves a client to guess from the name —
       // and it guesses high (see the snake_case note on the per-provider path).
-      const { contextWindow, maxOutput } = comboSeatLimits(combo, combosByName);
       if (Number.isFinite(contextWindow)) entry.context_length = contextWindow;
       if (Number.isFinite(maxOutput)) entry.max_completion_tokens = maxOutput;
     }
