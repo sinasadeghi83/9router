@@ -1,3 +1,15 @@
+# v0.5.114 (2026-11-05)
+
+## Features
+- **Combos**: per-combo settings — display name, description, context window, max output tokens, temperature, top_p, reasoning effort and a hide-from-list toggle, stored in a new `combos.options` column (schema v3, auto-added on existing DBs) and carried through backup export/import
+- **Combos**: `/v1/models` publishes the display name (`name`/`display_name`) and description, and the overridden context window / max output (including through nested combos); hidden combos are left out of the list but stay routable
+- **Combos**: request defaults apply when a combo is called, in the client's wire format (Chat, Responses, Claude, Gemini) — temperature/top_p/reasoning effort fill only absent fields, max output fills an absent limit and caps a larger one (Claude thinking budget kept below it); fail-open
+- **Dashboard**: collapsible Settings section in the combo create/edit modal with inline validation; combo cards show the display name, a hidden badge and the effective limits/defaults
+
+## Fixes
+- **Dashboard**: import `Link` on the combos page (System One "Configure" link)
+- **API**: `PUT /api/combos/[id]` only persists `name`/`models`/`kind`/`options` and rejects invalid options with 400
+
 # v0.5.113 (2026-10-30)
 
 ## Fixes
