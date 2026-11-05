@@ -5,6 +5,9 @@ import Input from "./Input";
 import Select from "./Select";
 import Toggle from "./Toggle";
 import { COMBO_OPTION_LIMITS, COMBO_REASONING_EFFORTS } from "open-sse/services/comboOptions.js";
+import { countComboOptions } from "./comboOptionsDraft";
+// Re-exported so existing imports from this module (and components/index.js) keep working.
+export { comboOptionsToDraft, draftToComboOptions, validateComboOptionsDraft, countComboOptions } from "./comboOptionsDraft";
 
 const fmtTokens = (n) => {
   if (!Number.isFinite(n)) return null;
@@ -17,68 +20,20 @@ const REASONING_OPTIONS = [
   ...COMBO_REASONING_EFFORTS.map((e) => ({ value: e, label: e === "none" ? "none — thinking off" : e })),
 ];
 
-// Form state keeps raw strings so partially typed numbers survive re-renders.
-export function comboOptionsToDraft(options = {}) {
-  const str = (v) => (v === undefined || v === null ? "" : String(v));
-  return {
-    displayName: str(options.displayName),
-    description: str(options.description),
-    contextWindow: str(options.contextWindow),
-    maxOutputTokens: str(options.maxOutputTokens),
-    temperature: str(options.temperature),
-    topP: str(options.topP),
-    reasoningEffort: options.reasoningEffort || "",
-    hidden: !!options.hidden,
-  };
-}
-
-// Draft → API payload. Empty strings are dropped; the server validates the rest.
-export function draftToComboOptions(draft) {
-  const out = {};
-  const text = (k) => { const v = draft[k]?.trim(); if (v) out[k] = v; };
-  const num = (k) => { const v = draft[k]?.trim(); if (v) out[k] = Number(v); };
-  text("displayName");
-  text("description");
-  num("contextWindow");
-  num("maxOutputTokens");
-  num("temperature");
-  num("topP");
-  if (draft.reasoningEffort) out.reasoningEffort = draft.reasoningEffort;
-  if (draft.hidden) out.hidden = true;
-  return out;
-}
-
-// Client-side mirror of the server rules, for inline errors only.
-export function validateComboOptionsDraft(draft) {
-  const errors = {};
-  const L = COMBO_OPTION_LIMITS;
-  const checkNum = (key, { min, max, integer }) => {
-    const raw = draft[key]?.trim();
-    if (!raw) return;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) errors[key] = "Must be a number";
-    else if (integer && !Number.isInteger(n)) errors[key] = "Must be a whole number";
-    else if (n < min || n > max) errors[key] = `Between ${min.toLocaleString()} and ${max.toLocaleString()}`;
-  };
-  checkNum("contextWindow", { ...L.contextWindow, integer: true });
-  checkNum("maxOutputTokens", { ...L.maxOutputTokens, integer: true });
-  checkNum("temperature", L.temperature);
-  checkNum("topP", L.topP);
-  if ((draft.displayName || "").trim().length > L.displayName.maxLength) errors.displayName = `At most ${L.displayName.maxLength} characters`;
-  if ((draft.description || "").trim().length > L.description.maxLength) errors.description = `At most ${L.description.maxLength} characters`;
-  return errors;
-}
-
-export function countComboOptions(draft) {
-  return Object.keys(draftToComboOptions(draft)).length;
-}
-
 /**
  * Per-combo settings editor (collapsible). Controlled via draft/onChange.
  * @param {{ draft: object, onChange: (draft: object) => void, errors?: object,
  *           derived?: { contextWindow?: number, maxOutput?: number }, defaultOpen?: boolean }} props
  */
 export default function ComboOptionsFields({ draft, onChange, errors = {}, derived = {}, defaultOpen = false }) {
+  const selectedLevels = Array.isArray(draft.thinkingLevels) ? draft.thinkingLevels : [];
+  const derivedLevels = Array.isArray(derived.thinkingLevels) ? derived.thinkingLevels : null;
+  const toggleLevel = (level) => {
+    const next = selectedLevels.includes(level)
+      ? selectedLevels.filter((l) => l !== level)
+      : COMBO_REASONING_EFFORTS.filter((l) => l === level || selectedLevels.includes(l));
+    onChange({ ...draft, thinkingLevels: next });
+  };
   const [open, setOpen] = useState(defaultOpen);
   const set = (key) => (e) => onChange({ ...draft, [key]: e?.target ? e.target.value : e });
   const count = countComboOptions(draft);
@@ -180,8 +135,53 @@ export default function ComboOptionsFields({ draft, onChange, errors = {}, deriv
             options={REASONING_OPTIONS}
             value={draft.reasoningEffort || "default"}
             onChange={(e) => onChange({ ...draft, reasoningEffort: e.target.value === "default" ? "" : e.target.value })}
-            hint="Mapped to each model's native thinking format; ignored by models that can't reason."
+            hint="Mapped to each model's native thinking format; ignored by models that can't reason. ultra is native on Codex GPT-5.6 and becomes max (or xhigh) elsewhere."
           />
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-sm font-medium text-text-main">Thinking levels</label>
+              {selectedLevels.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...draft, thinkingLevels: [] })}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  Reset to auto
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Thinking levels">
+              {COMBO_REASONING_EFFORTS.map((level) => {
+                const on = selectedLevels.includes(level);
+                const auto = selectedLevels.length === 0 && derivedLevels?.includes(level);
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleLevel(level)}
+                    className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors ${
+                      on
+                        ? "border-primary bg-primary/10 font-medium text-primary"
+                        : auto
+                          ? "border-dashed border-primary/40 text-primary/80 hover:bg-primary/5"
+                          : "border-black/10 text-text-muted hover:bg-black/[0.03] dark:border-white/10 dark:hover:bg-white/[0.03]"
+                    }`}
+                  >
+                    {level}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-text-muted">
+              {selectedLevels.length > 0
+                ? "Advertised on /v1/models as this combo's supported levels. ultra is only native on Codex GPT-5.6; other models take it as max. Clients can still send the model(level) suffix."
+                : derivedLevels
+                  ? `Auto: the levels every reasoning model in this combo accepts (dashed). Pick levels to override.`
+                  : "Auto: none of this combo's models reasons. Pick levels to advertise reasoning support anyway."}
+            </p>
+          </div>
 
           <Toggle
             checked={draft.hidden}

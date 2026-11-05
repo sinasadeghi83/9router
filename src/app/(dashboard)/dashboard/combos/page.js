@@ -10,6 +10,7 @@ import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModa
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
+import { deriveComboThinkingLevels } from "open-sse/providers/modelListMeta.js";
 import { resolveProviderId, AI_PROVIDERS } from "@/shared/constants/providers";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
@@ -683,6 +684,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
     options.temperature !== undefined && `temp ${options.temperature}`,
     options.topP !== undefined && `top_p ${options.topP}`,
     options.reasoningEffort && `effort ${options.reasoningEffort}`,
+    Array.isArray(options.thinkingLevels) && options.thinkingLevels.length > 0 && `levels ${options.thinkingLevels.join("/")}`,
   ].filter(Boolean);
 
   return (
@@ -1215,6 +1217,11 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   const optionErrors = validateComboOptionsDraft(optionsDraft);
   const hasOptionErrors = Object.keys(optionErrors).length > 0;
   const derivedCaps = aggregateComboCapabilities(models, comboByName, getCaps);
+  const derivedLevels = deriveComboThinkingLevels(
+    { name: combo?.name, models },
+    (n) => (comboByName[n] ? { name: n, models: comboByName[n] } : null),
+    resolveProviderId,
+  );
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -1385,7 +1392,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             draft={optionsDraft}
             onChange={setOptionsDraft}
             errors={optionErrors}
-            derived={{ contextWindow: derivedCaps?.contextWindow, maxOutput: derivedCaps?.maxOutput }}
+            derived={{ contextWindow: derivedCaps?.contextWindow, maxOutput: derivedCaps?.maxOutput, thinkingLevels: derivedLevels }}
             defaultOpen={Object.keys(combo?.options || {}).length > 0}
           />
 
