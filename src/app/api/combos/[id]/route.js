@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { normalizeComboOptions } from "open-sse/services/comboOptions.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -41,9 +42,23 @@ export async function PUT(request, { params }) {
       }
     }
     
+    // Only persist known fields; `options` replaces the stored object wholesale
+    // (send {} to clear, omit to keep).
+    const patch = {};
+    for (const key of ["name", "models", "kind"]) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "options")) {
+      const normalized = normalizeComboOptions(body.options);
+      if (normalized.errors.length) {
+        return NextResponse.json({ error: normalized.errors.join("; ") }, { status: 400 });
+      }
+      patch.options = normalized.value;
+    }
+
     // Capture previous name to invalidate rotation state on rename
     const prev = await getComboById(id);
-    const combo = await updateCombo(id, body);
+    const combo = await updateCombo(id, patch);
     
     if (!combo) {
       return NextResponse.json({ error: "Combo not found" }, { status: 404 });
