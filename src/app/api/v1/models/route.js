@@ -21,6 +21,17 @@ import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
+import { decorateModelEntry, resolveModelThinkingLevels, deriveComboThinkingLevels, toUnixSeconds } from "open-sse/providers/modelListMeta.js";
+import {
+  LLM_KIND,
+  KIND_SLUG_MAP,
+  parseKindsParam,
+  corsPreflight,
+  jsonResponse,
+  listEnvelope,
+  openAIError,
+  serverError,
+} from "./modelsHttp.js";
 
 // Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
 // credentials carry the provider id so qoderModels picks the right region's
@@ -40,7 +51,16 @@ async function resolveQoderLiveModels(conn, provider) {
   // Visible + hidden (enable:false) catalog keys — chat routes all of them.
   const models = routableQoderModels(result);
   if (!models.length) return null;
-  return { models: models.map((m) => ({ id: m.id, name: m.name })) };
+  // routableQoderModels drops the catalog's is_reasoning flag; carry it so the
+  // thinking levels can be published for models the static tables have not seen.
+  const reasoningById = new Map((result?.models || []).map((m) => [m.id, m.isReasoning === true]));
+  return {
+    models: models.map((m) => ({
+      id: m.id,
+      name: m.name,
+      ...(reasoningById.get(m.id) ? { reasoning: true } : {}),
+    })),
+  };
 }
 
 // Combo seats use UI aliases; the model registry also has transport aliases.
@@ -169,8 +189,6 @@ const parseOpenAIStyleModels = (data) => {
 // and break recursive loops between 9router instances connected to each other.
 const INTERNAL_MODELS_FETCH_HEADER = "x-9r-internal-models-fetch";
 
-// LLM kind sentinel — combos/models with no explicit kind default to LLM
-const LLM_KIND = "llm";
 
 // Map per-model `type` field (in PROVIDER_MODELS) to service kind.
 // Models without `type` are treated as LLM.
@@ -330,8 +348,21 @@ function comboLimits(combo, combosByName, visiting = new Set()) {
   };
 }
 
+// A model's own release date when the catalog carries one (seconds), else 0.
+function modelCreated(model) {
+  return toUnixSeconds(model?.created ?? model?.created_at ?? model?.releaseDate ?? model?.release_date);
+}
+
 /**
  * Build OpenAI-format models list filtered by service kinds.
+ *
+ * options:
+ *   skipDynamicFetch  skip upstream /models fetches (cross-instance loop guard)
+ *   id                only build entries that can match this published id. Combos match by
+ *                     name; provider entries only for the provider owning the alias prefix,
+ *                     so retrieving one model does not hit every provider's live catalog.
+ *   includeHidden     include combos flagged options.hidden (they stay routable by name,
+ *                     so they must stay retrievable by name)
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
  */
 export async function buildModelsList(kindFilter, options = {}) {
@@ -339,6 +370,10 @@ export async function buildModelsList(kindFilter, options = {}) {
   // 9router instance's fetchCompatibleModelIds — skip dynamic fetch to break
   // cross-instance recursive loops.
   const skipDynamicFetch = options.skipDynamicFetch === true;
+  const onlyId = typeof options.id === "string" && options.id ? options.id : null;
+  const includeHidden = options.includeHidden === true;
+  // Published provider ids are `${outputAlias}/${model}`; a bare id can only be a combo.
+  const onlyIdAlias = onlyId && onlyId.includes("/") ? onlyId.slice(0, onlyId.indexOf("/")) : null;
   let connections = [];
   try {
     connections = await getProviderConnections();
@@ -405,9 +440,10 @@ export async function buildModelsList(kindFilter, options = {}) {
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
+    if (onlyId && combo.name !== onlyId) continue;
     const options = combo.options || {};
     // Hidden combos stay routable by name; they are only left out of the list.
-    if (options.hidden) continue;
+    if (options.hidden && !includeHidden) continue;
     const entry = {
       id: combo.name,
       object: "model",
@@ -436,7 +472,28 @@ export async function buildModelsList(kindFilter, options = {}) {
       // and it guesses high (see the snake_case note on the per-provider path).
       if (Number.isFinite(contextWindow)) entry.context_length = contextWindow;
       if (Number.isFinite(maxOutput)) entry.max_completion_tokens = maxOutput;
+      // Levels the user picked in the combo settings win; otherwise the levels every
+      // reasoning seat accepts.
+      const override = Array.isArray(options.thinkingLevels) && options.thinkingLevels.length > 0
+        ? options.thinkingLevels
+        : null;
+      const levels = override || deriveComboThinkingLevels(
+        combo,
+        (name) => combosByName.get(name),
+        (alias) => ALIAS_TO_PROVIDER_ID[alias] || alias,
+      );
+      // A user-declared level set means the combo reasons, even if no seat is catalogued as such.
+      const baseCaps = comboCaps && override ? { ...comboCaps, reasoning: true } : comboCaps;
+      if (baseCaps && baseCaps !== comboCaps) entry.capabilities = baseCaps;
+      decorateModelEntry(entry, {
+        created: combo.createdAt,
+        caps: baseCaps,
+        levelInfo: levels ? { levels, source: override ? "combo-settings" : "combo" } : null,
+      });
+      models.push(entry);
+      continue;
     }
+    decorateModelEntry(entry, { created: combo.createdAt, llm: false });
     models.push(entry);
   }
 
@@ -448,12 +505,27 @@ export async function buildModelsList(kindFilter, options = {}) {
       for (const model of providerModels) {
         if (!kindFilter.includes(modelKind(model))) continue;
         if (isDisabled(alias, model.id) || isDisabled(providerId, model.id)) continue;
-        models.push({
+        if (onlyIdAlias && onlyIdAlias !== alias) continue;
+        const caps = getCapabilitiesForModel(providerId, model.id);
+        const staticEntry = {
           id: `${alias}/${model.id}`,
           object: "model",
           owned_by: alias,
-          capabilities: getCapabilitiesForModel(alias, model.id),
+          capabilities: caps,
+        };
+        const isLlm = modelKind(model) === LLM_KIND;
+        if (isLlm) {
+          if (Number.isFinite(caps.contextWindow)) staticEntry.context_length = caps.contextWindow;
+          if (Number.isFinite(caps.maxOutput)) staticEntry.max_completion_tokens = caps.maxOutput;
+        }
+        decorateModelEntry(staticEntry, {
+          created: modelCreated(model),
+          displayName: model.name,
+          caps,
+          levelInfo: isLlm ? resolveModelThinkingLevels(providerId, model.id, { caps }) : null,
+          llm: isLlm,
         });
+        models.push(staticEntry);
       }
     }
 
@@ -467,11 +539,12 @@ export async function buildModelsList(kindFilter, options = {}) {
       const modelId = String(customModel.id).trim();
       if (!modelId) continue;
 
-      models.push({
+      if (onlyIdAlias && onlyIdAlias !== providerAlias) continue;
+      models.push(decorateModelEntry({
         id: `${providerAlias}/${modelId}`,
         object: "model",
         owned_by: providerAlias,
-      });
+      }, { created: modelCreated(customModel), llm: false }));
     }
   } else {
     for (const [providerId, conn] of activeConnectionByProvider.entries()) {
@@ -483,6 +556,9 @@ export async function buildModelsList(kindFilter, options = {}) {
         || getProviderAlias(providerId)
         || staticAlias
       ).trim();
+      // Retrieval by id: skip providers that cannot own it before any live catalog fetch.
+      if (onlyIdAlias && onlyIdAlias !== outputAlias && onlyIdAlias !== staticAlias && onlyIdAlias !== providerId) continue;
+      if (onlyId && !onlyIdAlias) continue;
       const providerModels = PROVIDER_MODELS[staticAlias] || [];
       const enabledModels = conn?.providerSpecificData?.enabledModels;
       const hasExplicitEnabledModels =
@@ -496,6 +572,7 @@ export async function buildModelsList(kindFilter, options = {}) {
       );
       let liveModelKindById = new Map();
       let liveCapabilitiesById = new Map();
+      let liveMetaById = new Map();
 
       let rawModelIds = hasExplicitEnabledModels
         ? Array.from(
@@ -527,9 +604,16 @@ export async function buildModelsList(kindFilter, options = {}) {
             );
             liveCapabilitiesById = new Map(
               live.models
-                .filter((m) => m?.id && m.capabilities)
-                .map((m) => [m.id, m.capabilities])
+                .filter((m) => m?.id && (m.capabilities || m.reasoning === true || Array.isArray(m.thinkingLevels)))
+                .map((m) => [m.id, {
+                  ...(m.capabilities || {}),
+                  // Live catalogs that flag reasoning (or list levels) at the top level
+                  // of the model rather than inside capabilities.
+                  ...(m.reasoning === true && m.capabilities?.reasoning === undefined ? { reasoning: true } : {}),
+                  ...(Array.isArray(m.thinkingLevels) ? { thinkingLevels: m.thinkingLevels } : {}),
+                }])
             );
+            liveMetaById = new Map(live.models.filter((m) => m?.id).map((m) => [m.id, m]));
           }
         } catch (err) {
           console.log(`Live model fetch failed for ${providerId}: ${err?.message || err}`);
@@ -604,6 +688,7 @@ export async function buildModelsList(kindFilter, options = {}) {
         if (!kindFilter.includes(kind) && !allowAsLlm) continue;
         if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId) || isDisabled(providerId, modelId)) continue;
 
+        if (onlyId && onlyId !== `${outputAlias}/${modelId}`) continue;
         const model = {
           id: `${outputAlias}/${modelId}`,
           object: "model",
@@ -638,26 +723,40 @@ export async function buildModelsList(kindFilter, options = {}) {
           if (Number.isFinite(contextWindow)) model.context_length = contextWindow;
           if (Number.isFinite(maxOutput)) model.max_completion_tokens = maxOutput;
         }
+        const isLlmEntry = kind === LLM_KIND || allowAsLlm;
+        const meta = liveMetaById.get(modelId) || providerModels.find((m) => m.id === modelId);
+        decorateModelEntry(model, {
+          created: modelCreated(meta),
+          displayName: meta?.name,
+          caps: caps || getCapabilitiesForModel(providerId, modelId),
+          levelInfo: isLlmEntry
+            ? resolveModelThinkingLevels(providerId, modelId, {
+                caps: getCapabilitiesForModel(providerId, modelId),
+                liveCaps: liveCapabilitiesById.get(modelId),
+              })
+            : null,
+          llm: isLlmEntry,
+        });
         models.push(model);
       }
 
       // Web search/fetch — provider IS the model, expose as {alias}/search and/or {alias}/fetch with explicit kind
       const providerInfo = AI_PROVIDERS[providerId];
-      if (kindFilter.includes("webSearch") && providerInfo?.searchConfig) {
-        models.push({
+      if (kindFilter.includes("webSearch") && providerInfo?.searchConfig && (!onlyId || onlyId === `${outputAlias}/search`)) {
+        models.push(decorateModelEntry({
           id: `${outputAlias}/search`,
           object: "model",
           kind: "webSearch",
           owned_by: outputAlias,
-        });
+        }, { llm: false }));
       }
-      if (kindFilter.includes("webFetch") && providerInfo?.fetchConfig) {
-        models.push({
+      if (kindFilter.includes("webFetch") && providerInfo?.fetchConfig && (!onlyId || onlyId === `${outputAlias}/fetch`)) {
+        models.push(decorateModelEntry({
           id: `${outputAlias}/fetch`,
           object: "model",
           kind: "webFetch",
           owned_by: outputAlias,
-        });
+        }, { llm: false }));
       }
     }
   }
@@ -677,35 +776,38 @@ export async function buildModelsList(kindFilter, options = {}) {
  * Handle CORS preflight
  */
 export async function OPTIONS() {
-  return new Response(null, {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
-    },
-  });
+  return corsPreflight("GET, OPTIONS");
 }
 
 /**
  * GET /v1/models - OpenAI compatible models list (LLM/chat models only by default).
- * For other capabilities use /v1/models/{kind} (image, tts, stt, embedding, image-to-text, web).
+ * Query: ?kind=all | image | tts | stt | embedding | image-to-text | web (comma-separated)
+ * widens the list to other kinds. For the same lists as paths use /v1/models/{kind}.
+ * Entries are also readable as Anthropic ModelInfo and OpenRouter models (see modelListMeta.js).
  */
 export async function GET(request) {
   try {
     // Detect cross-instance recursive /models fetch (another 9router fetching our /models)
     const skipDynamicFetch = request?.headers?.get(INTERNAL_MODELS_FETCH_HEADER) === "1";
+    let kindFilter = [LLM_KIND];
+    const kindParam = request?.url ? new URL(request.url).searchParams.get("kind") : null;
+    if (kindParam) {
+      const parsed = parseKindsParam(kindParam);
+      if (!parsed) {
+        return openAIError(400, `Unknown kind '${kindParam}'. Use all, llm or one of: ${Object.keys(KIND_SLUG_MAP).join(", ")}.`, { param: "kind", code: "invalid_value" });
+      }
+      kindFilter = parsed;
+    }
     const data = await filterModelsListForKey(
       await getKeyAccessContext(request),
-      await buildModelsList([LLM_KIND], { skipDynamicFetch })
+      await buildModelsList(kindFilter, { skipDynamicFetch })
     );
-    return Response.json({ object: "list", data }, {
-      headers: { "Access-Control-Allow-Origin": "*" },
+    return jsonResponse(listEnvelope(data), {
+      // The list can take upstream round-trips to build; let clients and proxies reuse it briefly.
+      headers: { "Cache-Control": "private, max-age=30" },
     });
   } catch (error) {
     console.log("Error fetching models:", error);
-    return Response.json(
-      { error: { message: error.message, type: "server_error" } },
-      { status: 500 }
-    );
+    return serverError();
   }
 }

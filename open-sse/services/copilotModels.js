@@ -73,7 +73,17 @@ function expandCatalog(raw) {
     const id = m.id;
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    models.push({ id, name: m.name || id });
+    // Copilot lists the efforts each model accepts (capabilities.supports.reasoning_effort);
+    // keep them so /v1/models can publish real levels instead of a format default.
+    const efforts = m.capabilities?.supports?.reasoning_effort;
+    const thinkingLevels = Array.isArray(efforts)
+      ? efforts.filter((e) => typeof e === "string" && e.trim()).map((e) => e.trim().toLowerCase())
+      : [];
+    models.push({
+      id,
+      name: m.name || id,
+      ...(thinkingLevels.length ? { thinkingLevels } : {}),
+    });
   }
   return models;
 }

@@ -33,7 +33,11 @@ describe("GET /v1/models/{id}", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(chatModel);
-    expect(mocks.buildModelsList).toHaveBeenCalledWith(["llm"]);
+    // Retrieval builds only the requested id, across every kind (not just chat models).
+    expect(mocks.buildModelsList).toHaveBeenCalledWith(
+      expect.arrayContaining(["llm", "embedding", "image"]),
+      { id: "cc/claude-sonnet-5", includeHidden: true },
+    );
   });
 
   it("also handles a decoded slash in a single catch-all segment", async () => {
@@ -52,7 +56,13 @@ describe("GET /v1/models/{id}", () => {
     const response = await GET(new Request("https://router.test/v1/models/image"), params(["image"]));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ object: "list", data: [imageModel] });
+    expect(await response.json()).toEqual({
+      object: "list",
+      data: [imageModel],
+      has_more: false,
+      first_id: imageModel.id,
+      last_id: imageModel.id,
+    });
     expect(mocks.buildModelsList).toHaveBeenCalledWith(["image"]);
   });
 
