@@ -248,8 +248,8 @@ importers:
         specifier: ^1.14.1
         version: 1.14.2
       undici:
-        specifier: ^7.30.1
-        version: 7.30.1
+        specifier: ^8.12.3
+        version: 8.12.4
       uuid:
         specifier: ^13.0.0
         version: 13.0.2
@@ -3207,9 +3207,9 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@7.30.1:
-    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
-    engines: {node: '>=20.18.1'}
+  undici@8.12.4:
+    resolution: {integrity: sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==}
+    engines: {node: '>=22.19.0'}
 
   unrs-resolver@1.12.2:
     resolution: {integrity: sha512-dmlRxBJJayXjqTwC+JtF1HhJmgf3ftQ3YejFcZrf4+KKtJv0qDsK1pjqaaVjG7wJ5NJ6UVP1OqRMQ71Z4C3rxQ==}
@@ -6504,7 +6504,7 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  undici@7.30.1: {}
+  undici@8.12.4: {}
 
   unrs-resolver@1.12.2:
     dependencies:
