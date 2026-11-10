@@ -39,10 +39,7 @@ export default {
     { id: "poolside/laguna-xs-2.1", name: "Laguna XS 2.1" },
     { id: "stepfun-ai/step-5-preview", name: "Step 5 Preview" },
     { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash" },
-    { id: "nvidia/nv-embedqa-e5-v5", name: "NV EmbedQA E5 v5", kind: "embedding" },
     { id: "nvidia/parakeet-ctc-1.1b-asr", name: "Parakeet CTC 1.1B", params: ["language"], kind: "stt" },
-    { id: "fastpitch", name: "FastPitch", kind: "tts" },
-    { id: "tacotron2", name: "Tacotron2", kind: "tts" },
   ],
   serviceKinds: ["llm","tts","embedding"],
   ttsConfig: {

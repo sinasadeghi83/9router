@@ -68,8 +68,6 @@ export default {
     // Legacy names: still accepted upstream but served by V4.1 Flash 1017 (billed at Flash price).
     { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash (legacy)" },
     { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision (legacy)" },
-    { id: "deepseek-chat", name: "DeepSeek V3.2 Chat" },
-    { id: "deepseek-reasoner", name: "DeepSeek V3.2 Reasoner" },
   ],
   features: {
     usage: true,
