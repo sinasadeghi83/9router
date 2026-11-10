@@ -59,11 +59,15 @@ export default {
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
     { id: "deepseek-v4-pro-max", name: "DeepSeek V4 Pro Max", upstreamModelId: "deepseek-v4-pro" },
     { id: "deepseek-v4-pro-none", name: "DeepSeek V4 Pro No Thinking", upstreamModelId: "deepseek-v4-pro" },
+    // Canonical Flash id per https://api-docs.deepseek.com/quick_start/pricing
+    // (DeepSeek-V4.1-Flash-1017, 1M ctx, thinking + non-thinking, vision).
+    { id: "deepseek-flash", name: "DeepSeek V4.1 Flash" },
     // DeepSeek renamed the served id: the API only accepts "deepseek-flash"
     // and rejects "deepseek-v4.1-flash" with HTTP 400 (#4940).
-    { id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", upstreamModelId: "deepseek-flash" },
-    { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
-    { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision (Exp)" },
+    { id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash (alias)", upstreamModelId: "deepseek-flash" },
+    // Legacy names: still accepted upstream but served by V4.1 Flash 1017 (billed at Flash price).
+    { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash (legacy)" },
+    { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision (legacy)" },
     { id: "deepseek-chat", name: "DeepSeek V3.2 Chat" },
     { id: "deepseek-reasoner", name: "DeepSeek V3.2 Reasoner" },
   ],
