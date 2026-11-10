@@ -1,3 +1,19 @@
+# v0.5.117 (2026-11-10)
+
+## Features
+- **NVIDIA NIM**: refresh free chat catalog from the live `/v1/models` list (DeepSeek V4.1 Flash, Gemma 4, Nemotron 3.5, Mistral Large 4, GLM 5.3 Flash, and more)
+- **OpenCode Free**: add the live free lane (`big-pickle`, `mimo-v2.6-flash-free`, `deepseek-v4.1-flash-free`, `glm-5.3-flash-free`, `minimax-m3.1-flash-free`, and others)
+- **OpenRouter**: add 14 free chat models, including the Free Models Router
+- **Cursor**: replace the static fallback with the live `GetUsableModels` list (273 models)
+- **DeepSeek**: add canonical `deepseek-flash`; add V4.1 Flash variants to DeepSeek Web (verified live)
+- **Antigravity**: add live-served Gemini 3.5/3.1 Flash Lite, Gemini 3 Flash, Gemini 2.5 family and Gemini 4 Argon
+- **Zai GLM Coding**: sync with the live `/models` list (adds GLM 5.3 FlashX / FlashX Legal, GLM 4.6, GLM 4.5)
+- **Xiaomi MiMo**: sync with the official platform catalog; add V2.6 Pro/Flash to Token Plan
+
+## Fixes
+- **Registry**: remove models absent upstream (Antigravity Gemini 3.6/3.7/3.1 Pro/Claude 5.5 tiers and the `gemini-3.8-flash` alias, DeepSeek `deepseek-chat`/`deepseek-reasoner`, OpenCode `union-alpha`/`jev-1.13-free`, retired OpenRouter TTS/image/video ids, NVIDIA `fastpitch`/`tacotron2`/`nv-embedqa-e5-v5`, GLM `glm-4.6v`/highspeed, MiMo V2 TTS)
+- **Tests**: align registry assertions with the pruned catalogs
+
 # v0.5.116 (2026-11-08)
 
 ## Features
