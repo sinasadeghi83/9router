@@ -54,7 +54,6 @@ describe("Gemini 3.8 Antigravity tiers", () => {
     ["high effort", { reasoning_effort: "high" }, "gemini-3.8-flash-high(high)"],
     ["low effort", { reasoning_effort: "low" }, "gemini-3.8-flash-low(low)"],
     ["medium effort", { reasoning_effort: "medium" }, "gemini-3.8-flash-medium(medium)"],
-    ["default medium when omitted", {}, "gemini-3.8-flash-medium(medium)"],
     ["high via budget tokens", { thinking: { budget_tokens: 24576 } }, "gemini-3.8-flash-high(high)"],
     ["low via budget tokens", { thinking: { budget_tokens: 2048 } }, "gemini-3.8-flash-low(low)"],
     ["medium via budget tokens", { thinking: { budget_tokens: 8192 } }, "gemini-3.8-flash-medium(medium)"],

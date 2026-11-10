@@ -302,14 +302,15 @@ describe("Antigravity dashboard normalization with weekly quotas", () => {
     };
 
     const quotas = parseQuotaData("antigravity", fallbackWithArgon);
-    expect(quotas.map((q) => q.modelKey)).toEqual(["gemini_argon", "gemini"]);
+    // Order follows the registry; Argon tiers are no longer registered, so it sorts last.
+    expect(quotas.map((q) => q.modelKey)).toEqual(["gemini", "gemini_argon"]);
     expect(quotas[0]).toMatchObject({
-      name: "Gemini 4 Argon",
-      remainingPercentage: 43,
-    });
-    expect(quotas[1]).toMatchObject({
       name: "Gemini (Flash / Pro)",
       remainingPercentage: 100,
+    });
+    expect(quotas[1]).toMatchObject({
+      name: "Gemini 4 Argon",
+      remainingPercentage: 43,
     });
   });
 });

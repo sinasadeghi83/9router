@@ -22,7 +22,7 @@ describe("buildModelGroups / collectModelValues for Add All Active Models", () =
 
     // Static registry entries for OpenCode Free must survive with zero connections.
     // (jev-1.13-free is kind: "systemone", so the LLM view hides it — picker parity.)
-    expect(values).toContain("oc/union-alpha");
+    expect(values).toContain("oc/big-pickle");
     expect(values).toContain("oc/muse-spark-1.2-contributor-free");
     expect(values).not.toContain("oc/jev-1.13-free");
   });
@@ -85,7 +85,7 @@ describe("buildModelGroups / collectModelValues for Add All Active Models", () =
     // No-auth providers are always offered, so assert the connection's own models
     // resolve under the routing alias rather than that they are the only entries.
     expect(values).toContain("oc/muse-spark-1.2-contributor-free");
-    expect(values).toContain("oc/union-alpha");
+    expect(values).toContain("oc/big-pickle");
     expect(values.filter((value) => value.startsWith("oc/")).length).toBeGreaterThan(1);
   });
 

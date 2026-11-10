@@ -65,38 +65,6 @@ describe("Gemini Cloud Code endpoint isolation", () => {
   });
 });
 
-describe("Gemini 3.6 Antigravity tiers", () => {
-  it.each(["high", "medium", "low"])(
-    "maps the %s tier to the shared upstream model with matching thinking level",
-    (tier) => {
-      const publicModel = `gemini-3.6-flash-${tier}`;
-      const upstreamModel = getModelUpstreamId("ag", publicModel);
-      const body = {
-        model: stripThinkingSuffix(upstreamModel),
-        request: {
-          contents: [{ role: "user", parts: [{ text: "hello" }] }],
-          generationConfig: {},
-        },
-      };
-
-      applyThinking("antigravity", upstreamModel, body, "antigravity");
-      const finalBody = new AntigravityExecutor().transformRequest(
-        publicModel,
-        body,
-        true,
-        { projectId: "project", connectionId: "connection" }
-      );
-
-      expect(upstreamModel).toBe(`gemini-3.6-flash-tiered(${tier})`);
-      expect(finalBody.model).toBe("gemini-3.6-flash-tiered");
-      expect(finalBody.request.generationConfig.thinkingConfig).toEqual({
-        thinkingLevel: tier,
-        includeThoughts: true,
-      });
-    }
-  );
-});
-
 describe("Gemini 3.6 MITM model extraction", () => {
   it("exports the model extractor from the side-effect-free MITM config module", () => {
     expect(mitmConfig.extractModel).toBeTypeOf("function");

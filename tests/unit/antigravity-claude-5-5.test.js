@@ -10,39 +10,12 @@ const require = createRequire(import.meta.url);
 const { MODEL_SYNONYMS, MODEL_PATTERNS } = require("../../src/mitm/config.js");
 
 describe("Antigravity Claude 5.5 models (#4555, #4548)", () => {
-  it("includes Claude 5.5 models in Antigravity provider registry", () => {
-    const agModels = getModelsByProviderId("ag");
-    const ids = agModels.map((m) => m.id);
-
-    expect(ids).toContain("claude-sonnet-5-5-high");
-    expect(ids).toContain("claude-sonnet-5-5-medium");
-    expect(ids).toContain("claude-sonnet-5-5-low");
-    expect(ids).toContain("claude-sonnet-5-5");
-    expect(ids).not.toContain("claude-sonnet-5-5-thinking");
-    expect(ids).not.toContain("claude-opus-5-5-thinking");
-    expect(ids).toContain("claude-opus-5-5-high");
-    expect(ids).toContain("claude-opus-5-5-medium");
-    expect(ids).toContain("claude-opus-5-5-low");
-    expect(ids).toContain("claude-opus-5-5");
-
-    const sonnet = agModels.find((m) => m.id === "claude-sonnet-5-5");
-    expect(sonnet?.upstreamModelId).toBe("claude-sonnet-5-5-high(high)");
-    const opus = agModels.find((m) => m.id === "claude-opus-5-5");
-    expect(opus?.upstreamModelId).toBe("claude-opus-5-5-high(high)");
-  });
-
-  it("resolves upstream model ID with thinking stripped for Google Cloud Code API", () => {
-    const upstreamSonnet = getModelUpstreamId("ag", "claude-sonnet-5-5");
-    expect(upstreamSonnet).toBe("claude-sonnet-5-5-high(high)");
-    expect(stripThinkingSuffix(upstreamSonnet)).toBe("claude-sonnet-5-5-high");
-
-    const upstreamOpus = getModelUpstreamId("ag", "claude-opus-5-5");
-    expect(upstreamOpus).toBe("claude-opus-5-5-high(high)");
-    expect(stripThinkingSuffix(upstreamOpus)).toBe("claude-opus-5-5-high");
-
-    const upstreamHigh = getModelUpstreamId("ag", "claude-sonnet-5-5-high");
-    expect(upstreamHigh).toBe("claude-sonnet-5-5-high(high)");
-    expect(stripThinkingSuffix(upstreamHigh)).toBe("claude-sonnet-5-5-high");
+  it("no longer lists Claude 5.5 tiers in the Antigravity registry (absent from live fetchAvailableModels)", () => {
+    const ids = getModelsByProviderId("ag").map((m) => m.id);
+    for (const id of [
+      "claude-sonnet-5-5-high", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-low", "claude-sonnet-5-5",
+      "claude-opus-5-5-high", "claude-opus-5-5-medium", "claude-opus-5-5-low", "claude-opus-5-5",
+    ]) expect(ids).not.toContain(id);
   });
 
   it("resolves capabilities for Claude 5.5 models", () => {

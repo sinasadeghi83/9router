@@ -46,33 +46,3 @@ describe("Gemini 4 Argon thinking clamp", () => {
     expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal", includeThoughts: false });
   });
 });
-
-describe("Gemini 4 Argon Antigravity tier", () => {
-  it.each([
-    ["gemini-4-argon-high", "high"],
-    ["gemini-4-argon-medium", "medium"],
-    ["gemini-4-argon-low", "low"],
-  ])("maps %s to the wire model with a %s thinking level", (modelId, expectedLevel) => {
-    const upstreamModel = getModelUpstreamId("ag", modelId);
-    expect(upstreamModel).toBe(`${modelId}(${expectedLevel})`);
-
-    const body = {
-      model: stripThinkingSuffix(upstreamModel),
-      request: {
-        contents: [{ role: "user", parts: [{ text: "hello" }] }],
-        generationConfig: {},
-      },
-    };
-
-    applyThinking("antigravity", upstreamModel, body, "antigravity");
-    const finalBody = new AntigravityExecutor().transformRequest(
-      modelId,
-      body,
-      true,
-      { projectId: "project", connectionId: "connection" }
-    );
-
-    expect(finalBody.model).toBe(modelId);
-    expect(finalBody.request.generationConfig.thinkingConfig).toEqual({ thinkingLevel: expectedLevel, includeThoughts: true });
-  });
-});
