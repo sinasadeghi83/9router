@@ -20,6 +20,10 @@ export default {
   transport: {
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     validateUrl: "https://integrate.api.nvidia.com/v1/models",
+    timeoutMs: 90000,
+    quirks: {
+      dropClientMetadata: true,
+    },
   },
   models: [
     { id: "deepseek-ai/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash" },
@@ -39,6 +43,9 @@ export default {
     { id: "poolside/laguna-xs-2.1", name: "Laguna XS 2.1" },
     { id: "stepfun-ai/step-5-preview", name: "Step 5 Preview" },
     { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash" },
+    { id: "meta/llama-guard-4-12b", name: "Llama Guard 4 12B" },
+    { id: "nvidia/riva-translate-4b-instruct-v2", name: "Riva Translate 4B v2" },
+    { id: "meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct" },
     { id: "nvidia/parakeet-ctc-1.1b-asr", name: "Parakeet CTC 1.1B", params: ["language"], kind: "stt" },
   ],
   serviceKinds: ["llm","tts","embedding"],
