@@ -1,6 +1,7 @@
 # v0.5.120 (2026-11-22)
 
 ## Changes
+- **Deps**: regenerate pnpm-lock.yaml for undici ^7.30.2 so `pnpm install --frozen-lockfile` passes in the release workflow
 - **Merge**: merge master v0.5.119 into master-sina (catalog refreshes reconciled with Synthetic, Claude Fable 5.2, Gemini 4 Carbon, Xiaomi Token Plan and NVIDIA NIM updates)
 
 # v0.5.119 (2026-11-11)
