@@ -3,13 +3,8 @@ import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, OPENAI_SERVICE_TIERS, CLAUDE_TO_OPENAI_SERVICE_TIER } from "../schema/index.js";
-import { collapseTextParts } from "../concerns/message.js";
+import { collapseTextParts, stripAnthropicBillingHeader } from "../concerns/message.js";
 import { chatStrictFrom } from "../concerns/toolStrict.js";
-
-function stripAnthropicBillingHeader(text) {
-  if (typeof text !== "string") return "";
-  return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
-}
 
 // Convert Claude request to OpenAI format
 export function claudeToOpenAIRequest(model, body, stream, credentials, opts = {}) {

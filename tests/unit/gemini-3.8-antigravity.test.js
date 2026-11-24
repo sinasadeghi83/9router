@@ -6,12 +6,15 @@ import { MODEL_PRICING } from "../../open-sse/providers/pricing.js";
 
 describe("Gemini 3.8 Flash Support & Config", () => {
   it("registers gemini-3.8-flash tiered models in antigravity provider registry", () => {
-    const agIds = antigravityRegistry.models.map(m => m.id);
+    const agModels = antigravityRegistry.models;
+    const agIds = agModels.map(m => m.id);
     expect(agIds).toContain("gemini-3.8-flash-high");
     expect(agIds).toContain("gemini-3.8-flash-medium");
     expect(agIds).toContain("gemini-3.8-flash-low");
-    // The unadorned alias is intentionally not registered (not served by fetchAvailableModels).
-    expect(agIds).not.toContain("gemini-3.8-flash");
+    // The unadorned alias resolves to the medium wire model.
+    expect(agIds).toContain("gemini-3.8-flash");
+    expect(agModels.find(m => m.id === "gemini-3.8-flash")?.upstreamModelId)
+      .toBe("gemini-3.8-flash-medium(medium)");
   });
 
   it("registers gemini-3.8-flash in gemini provider registry", () => {
