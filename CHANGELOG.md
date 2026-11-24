@@ -1,3 +1,10 @@
+# v0.5.124 (2026-11-24)
+
+## Changes
+- **Merge**: merge master v0.5.123 into master-sina (35 upstream commits) — Antigravity Gemini 4 Hydrogen and Neon tiers, the official client identity prompt and the fake-429 fixes; Kiro IDE 1.4.154 identity plus the CreateResponse fallback on `USER_REQUEST_RATE_EXCEEDED`; OpenDesign Go and DeepRelay providers with quota tracking; the refreshed ElevenLabs TTS/STT catalog; NVIDIA live embedding models with `input_type`; the Cloudflare Workers AI and System One catalog refresh; the Token Saver REA allow-prompt toggle; Codex GPT 6.2 Sol/Astra; and the cached-prompt billing-header fix. The Antigravity and NVIDIA registries were reconciled by hand so the fork's live catalogs and upstream's newer tier ids both survive.
+- **Tests**: align the Antigravity 3.7, 3.8 bare-alias and weekly-quota assertions with the newer registry, replacing the fork's "absent from live fetchAvailableModels" expectations that upstream's catalog correction superseded (no regressions: 52 failures after the merge vs 53 before).
+- **Deps**: resync `pnpm-lock.yaml` with the merged `next` 16.4.6, `node-forge` 1.4.3 and `eslint-config-next` 16.4.6 specifiers so `pnpm install --frozen-lockfile` passes again in the release workflow.
+
 # v0.5.123 (2026-11-22)
 
 ## Features
