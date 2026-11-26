@@ -1,3 +1,13 @@
+# v0.5.125 (2026-11-26)
+
+## Features
+- **Combo groups**: assign each combo to any number of named groups (typed inline in the combo form; groups are derived from combos, with badges and a group filter on the Combos page). Per-API-key access gains `access.groups`: a restricted key may call every combo currently in its granted groups, while member models stay reachable only through those combos. Group membership is re-read on every request and an unknown/deleted group grants nothing.
+- **Models per thinking level**: combos can map thinking levels to ordered model lists (`options.levelModels`). `Combo(high)` (or a numeric/none/auto suffix) and explicit client reasoning intent (`reasoning_effort`, Claude/Gemini thinking config) select that level's models first, then the combo's base list as fallback. The selected suffix is forwarded to the member models; the combo's own default effort never selects a mapping. Nested combos resolve level mappings too.
+
+## Fixes / Internal
+- Per-key access control now resolves `Combo(level)` to its base combo before checking the allow list, so level-suffixed combo requests are gated correctly.
+- DB: additive `combos.groups` and `apiKeys.accessGroups` columns (schema v4), carried through backups/export/import and read as empty on older rows. Combo request routing was consolidated into one `handleComboRequest` helper shared by top-level and nested combos.
+
 # v0.5.124 (2026-11-24)
 
 ## Changes
