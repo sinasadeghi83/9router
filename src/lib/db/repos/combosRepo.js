@@ -3,6 +3,7 @@ import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 // Relative path (not the open-sse alias) so the DB layer also loads under plain Node.
 import { readComboOptions } from "../../../../open-sse/services/comboOptions.js";
+import { readComboGroups } from "@/shared/utils/comboGroups.js";
 
 export function rowToCombo(row) {
   if (!row) return null;
@@ -11,6 +12,7 @@ export function rowToCombo(row) {
     name: row.name,
     kind: row.kind,
     models: parseJson(row.models, []),
+    groups: readComboGroups(parseJson(row.groups, [])),
     options: readComboOptions(parseJson(row.options, {})),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -49,13 +51,14 @@ export async function createCombo(data) {
     name: data.name,
     kind: data.kind || null,
     models: data.models || [],
+    groups: readComboGroups(data.groups),
     options: readComboOptions(data.options),
     createdAt: now,
     updatedAt: now,
   };
   db.run(
-    `INSERT INTO combos(id, name, kind, models, options, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), optionsToColumn(combo.options), combo.createdAt, combo.updatedAt]
+    `INSERT INTO combos(id, name, kind, models, groups, options, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), stringifyJson(combo.groups), optionsToColumn(combo.options), combo.createdAt, combo.updatedAt]
   );
   return combo;
 }
@@ -69,8 +72,8 @@ export async function updateCombo(id, data) {
     const merged = { ...rowToCombo(row), ...data, updatedAt: new Date().toISOString() };
     merged.options = readComboOptions(merged.options);
     db.run(
-      `UPDATE combos SET name = ?, kind = ?, models = ?, options = ?, updatedAt = ? WHERE id = ?`,
-      [merged.name, merged.kind, stringifyJson(merged.models || []), optionsToColumn(merged.options), merged.updatedAt, id]
+      `UPDATE combos SET name = ?, kind = ?, models = ?, groups = ?, options = ?, updatedAt = ? WHERE id = ?`,
+      [merged.name, merged.kind, stringifyJson(merged.models || []), stringifyJson(readComboGroups(merged.groups)), optionsToColumn(merged.options), merged.updatedAt, id]
     );
     result = merged;
   });

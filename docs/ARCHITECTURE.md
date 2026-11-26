@@ -239,6 +239,19 @@ flowchart TD
 
 Fallback decisions are driven by `open-sse/services/accountFallback.js` using status codes and error-message heuristics.
 
+## Combo Groups and Per-Key Access
+
+Combos carry a `groups` JSON array (no separate group table: a group exists while at least one combo names it). Per-API-key access lives in `apiKeys.accessRestricted`, `accessAllow` and `accessGroups`:
+
+- `accessAllow` entries are resolved combo names, `provider/model` ids, aliases, or provider ids (search/fetch).
+- `accessGroups` entries grant every combo currently in that group. Groups grant **combos only**; member models are reached through the combo, matching the individual combo-allow rule.
+- `getAllowSets()` in `src/sse/services/keyAccess.js` reads `getCombos()` once per restricted request, builds the group→combo map, and unions grants. Unknown/deleted groups grant nothing (fail closed).
+- `enforceKeyAccess()` resolves the requested target through `getComboTarget()`, so `Combo(level)` is gated on the base combo before any credential lookup. `/v1/models` is filtered through the same allowed-combo set.
+
+## Per-Level Combo Models
+
+Combos may map thinking levels to ordered model lists in `combos.options.levelModels`. `src/sse/handlers/chat.js` captures the client's explicit thinking intent before applying combo request defaults, resolves `getComboTarget()` (which strips a `Combo(level)` suffix), and calls `resolveComboModelsWithLevel()` from `open-sse/services/comboLevels.js`: the level's list first, the base `models` list as fallback, and the suffix forwarded to selected members. The combo's own default `reasoningEffort` never selects a mapping.
+
 ## OAuth Onboarding and Token Refresh Lifecycle
 
 ```mermaid

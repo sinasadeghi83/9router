@@ -26,6 +26,11 @@ export const COMBO_OPTION_LIMITS = {
   topP: { min: 0, max: 1 },
 };
 
+export const COMBO_LEVEL_MODELS_LIMITS = {
+  maxPerLevel: 20,
+  maxModelLength: 256,
+};
+
 // Smallest thinking budget upstreams accept (Anthropic minimum).
 const MIN_THINKING_BUDGET = 1024;
 
@@ -53,6 +58,58 @@ function cleanNumber(value, key, { min, max, integer }, errors) {
   if (integer && !Number.isInteger(n)) { errors.push(`${key} must be a whole number`); return undefined; }
   if (n < min || n > max) { errors.push(`${key} must be between ${min} and ${max}`); return undefined; }
   return n;
+}
+
+/** Validate and normalize the per-level model mapping. */
+function cleanLevelModels(input, errors) {
+  if (input === undefined || input === null) return undefined;
+  if (typeof input !== "object" || Array.isArray(input)) {
+    errors.push("levelModels must be an object of level → models");
+    return undefined;
+  }
+  const L = COMBO_LEVEL_MODELS_LIMITS;
+  const out = {};
+  for (const [rawLevel, rawValue] of Object.entries(input)) {
+    const level = String(rawLevel).trim().toLowerCase();
+    if (!COMBO_REASONING_EFFORTS.includes(level)) {
+      errors.push(`levelModels: '${rawLevel}' is not one of: ${COMBO_REASONING_EFFORTS.join(", ")}`);
+      continue;
+    }
+    const list = Array.isArray(rawValue)
+      ? rawValue
+      : typeof rawValue === "string" ? rawValue.split(",") : null;
+    if (!list) {
+      errors.push(`levelModels.${level} must be a list of models`);
+      continue;
+    }
+    const models = [];
+    const seen = new Set();
+    let bad = false;
+    for (const item of list) {
+      if (typeof item !== "string") {
+        errors.push(`levelModels.${level} must be a list of model strings`);
+        bad = true;
+        break;
+      }
+      const model = item.trim();
+      if (!model) continue;
+      if (model.length > L.maxModelLength) {
+        errors.push(`levelModels.${level}: model ids must be at most ${L.maxModelLength} characters`);
+        bad = true;
+        break;
+      }
+      if (seen.has(model)) continue;
+      seen.add(model);
+      models.push(model);
+      if (models.length > L.maxPerLevel) {
+        errors.push(`levelModels.${level} has more than ${L.maxPerLevel} models`);
+        bad = true;
+        break;
+      }
+    }
+    if (!bad && models.length > 0) out[level] = models;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /**
@@ -105,6 +162,23 @@ export function normalizeComboOptions(input) {
       if (!bad && wanted.size > 0) value.thinkingLevels = COMBO_REASONING_EFFORTS.filter((l) => wanted.has(l));
     }
   }
+
+  // Optional per-level model lists. Selecting a level here also advertises it
+  // when the user did not send thinkingLevels explicitly.
+  set("levelModels", cleanLevelModels(input.levelModels, errors));
+  if (value.levelModels && !value.thinkingLevels) {
+    value.thinkingLevels = COMBO_REASONING_EFFORTS.filter((l) => value.levelModels[l]);
+  }
+  if (value.levelModels && value.thinkingLevels) {
+    const allowed = new Set(value.thinkingLevels);
+    for (const level of Object.keys(value.levelModels)) {
+      if (!allowed.has(level)) {
+        errors.push(`levelModels: '${level}' is not one of the selected thinkingLevels`);
+        delete value.levelModels[level];
+      }
+    }
+    if (Object.keys(value.levelModels).length === 0) delete value.levelModels;
+  }
   if (value.thinkingLevels && value.reasoningEffort && !value.thinkingLevels.includes(value.reasoningEffort)) {
     errors.push("reasoningEffort must be one of the selected thinkingLevels");
   }
@@ -114,7 +188,7 @@ export function normalizeComboOptions(input) {
     else if (input.hidden) value.hidden = true;
   }
 
-  const known = new Set(["displayName", "description", "contextWindow", "maxOutputTokens", "temperature", "topP", "reasoningEffort", "thinkingLevels", "hidden"]);
+  const known = new Set(["displayName", "description", "contextWindow", "maxOutputTokens", "temperature", "topP", "reasoningEffort", "thinkingLevels", "levelModels", "hidden"]);
   for (const key of Object.keys(input)) {
     if (!known.has(key)) errors.push(`unknown option: ${key}`);
   }

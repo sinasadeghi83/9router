@@ -3,7 +3,8 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, Button, Input, Toggle, ModelSelectModal } from "@/shared/components";
+import { Card, Button, Input, Toggle, ModelSelectModal, ComboGroupsField } from "@/shared/components";
+import { collectComboGroups } from "@/shared/utils/comboGroups.js";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 
@@ -61,18 +62,25 @@ export default function ComboDetailPage() {
   const [apiKey, setApiKey] = useState("");
   const [connections, setConnections] = useState([]);
   const [modelAliases, setModelAliases] = useState({});
+  const [groups, setGroups] = useState([]);
+  const [groupSuggestions, setGroupSuggestions] = useState([]);
 
   const fetchAll = async () => {
     try {
-      const [comboRes, settingsRes, logsRes, keysRes, connsRes, aliasesRes] = await Promise.all([
+      const [comboRes, settingsRes, logsRes, keysRes, connsRes, aliasesRes, combosRes] = await Promise.all([
         fetch(`/api/combos/${id}`, { cache: "no-store" }),
         fetch("/api/settings", { cache: "no-store" }),
         fetch("/api/usage/logs", { cache: "no-store" }),
         fetch("/api/keys", { cache: "no-store" }),
         fetch("/api/providers", { cache: "no-store" }),
         fetch("/api/models/alias", { cache: "no-store" }),
+        fetch("/api/combos", { cache: "no-store" }),
       ]);
       if (aliasesRes.ok) setModelAliases((await aliasesRes.json()).aliases || {});
+      if (combosRes.ok) {
+        const allCombos = (await combosRes.json()).combos || [];
+        setGroupSuggestions(collectComboGroups(allCombos).map((g) => g.name));
+      }
       if (keysRes.ok) {
         const k = await keysRes.json();
         setApiKey((k.keys || []).find((x) => x.isActive !== false)?.key || "");
@@ -83,6 +91,7 @@ export default function ComboDetailPage() {
       setCombo(c);
       setName(c.name);
       setProviders(c.models || []);
+      setGroups(c.groups || []);
       const s = settingsRes.ok ? await settingsRes.json() : {};
       setRoundRobin(s.comboStrategies?.[c.name]?.fallbackStrategy === "round-robin");
       const allLogs = logsRes.ok ? await logsRes.json() : [];
@@ -116,6 +125,11 @@ export default function ComboDetailPage() {
     if (name === combo.name) return;
     const ok = await saveCombo({ name });
     if (ok) await fetchAll();
+  };
+
+  const handleGroupsChange = async (next) => {
+    setGroups(next);
+    await saveCombo({ groups: next });
   };
 
   const handleAddModel = async (model) => {
@@ -268,6 +282,7 @@ export default function ComboDetailPage() {
             <Input label="Combo Name" value={name} onChange={(e) => { setName(e.target.value); validateName(e.target.value); }} onBlur={handleSaveName} error={nameError} />
             <p className="text-[10px] text-text-muted mt-0.5">Only letters, numbers, -, _ and .</p>
           </div>
+          <ComboGroupsField groups={groups} onChange={handleGroupsChange} suggestions={groupSuggestions} />
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Round Robin</p>

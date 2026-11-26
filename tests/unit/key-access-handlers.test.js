@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const fx = vi.hoisted(() => ({
   combos: [
-    { id: "c1", name: "Main", models: ["openai/model-a", "openai/model-b"] },
+    { id: "c1", name: "Main", models: ["openai/model-a", "openai/model-b"], groups: ["premium"] },
   ],
   keys: {},
 }));
@@ -79,6 +79,7 @@ beforeEach(() => {
     "sk-combo": { id: "c", name: "combo", isActive: true, access: { restricted: true, allow: ["Main"] } },
     "sk-b": { id: "b", name: "b", isActive: true, access: { restricted: true, allow: ["openai/model-b"] } },
     "sk-empty": { id: "e", name: "empty", isActive: true, access: { restricted: true, allow: [] } },
+    "sk-group": { id: "g", name: "group", isActive: true, access: { restricted: true, allow: [], groups: ["PREMIUM"] } },
     "sk-media": {
       id: "m", name: "media", isActive: true,
       access: {
@@ -128,6 +129,25 @@ describe("chat (/v1/chat/completions, /v1/messages, /v1/responses all use handle
     expect((await chat("Main", "sk-b")).status).toBe(403);
     expect((await chat("openai/model-a", "sk-b")).status).toBe(403);
     expect(mocks.handleChatCore).not.toHaveBeenCalled();
+  });
+  it("allows Combo(level) through the same combo allow entry and routes the mapped level", async () => {
+    fx.combos[0].options = { levelModels: { high: ["openai/model-b"] } };
+    try {
+      const r = await chat("Main(high)", "sk-combo");
+      expect(r.status).toBe(200);
+      const tried = mocks.handleChatCore.mock.calls.map(([a]) => a.modelInfo.model);
+      expect(tried[0]).toMatch(/^model-b/);
+    } finally {
+      fx.combos[0].options = {};
+    }
+  });
+  it("group-restricted key: its group's combo 200, direct member and other targets 403", async () => {
+    expect((await chat("Main", "sk-group")).status).toBe(200);
+    vi.clearAllMocks();
+    for (const m of ["openai/model-a", "openai/model-b", "openai/gpt-4o"]) {
+      expect((await chat(m, "sk-group")).status).toBe(403);
+    }
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
   });
   it("empty-list key: 403 on everything", async () => {
     for (const m of ["Main", "openai/model-a", "openai/model-b"]) expect((await chat(m, "sk-empty")).status).toBe(403);
@@ -218,6 +238,8 @@ describe("/v1/models routes filter by key", () => {
     fx.keys["sk-mix"] = { id: "x", name: "mix", isActive: true, access: { restricted: true, allow: ["Main", someModel.toUpperCase()] } };
     expect(await list("sk-mix")).toEqual(["Main", someModel]);
     expect(await list("sk-combo")).toEqual(["Main"]);
+    fx.keys["sk-group"] = { id: "g", name: "group", isActive: true, access: { restricted: true, allow: [], groups: ["premium"] } };
+    expect(await list("sk-group")).toEqual(["Main"]);
     expect(await list("sk-empty")).toEqual([]);
     expect(await list(null)).toEqual(all); // no key: unchanged (middleware governs remote access)
   });

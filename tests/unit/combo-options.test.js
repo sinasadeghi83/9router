@@ -122,28 +122,41 @@ describe("combos repo: options persistence", () => {
     vi.resetModules();
     const db = await import("@/lib/db/index.js");
 
-    const created = await db.createCombo({ name: "c1", models: ["openai/gpt-x"], options: { displayName: "One", contextWindow: 100000 } });
+    const created = await db.createCombo({
+      name: "c1",
+      models: ["openai/gpt-x"],
+      groups: ["Premium", " Team A "],
+      options: { displayName: "One", contextWindow: 100000 },
+    });
     expect((await db.getComboByName("c1")).options).toEqual({ displayName: "One", contextWindow: 100000 });
+    expect((await db.getComboByName("c1")).groups).toEqual(["Premium", "Team A"]);
 
-    // Updating other fields keeps options.
+    // Updating other fields keeps options and groups.
     await db.updateCombo(created.id, { models: ["openai/gpt-y"] });
     expect((await db.getComboById(created.id)).options).toEqual({ displayName: "One", contextWindow: 100000 });
+    expect((await db.getComboById(created.id)).groups).toEqual(["Premium", "Team A"]);
+
+    await db.updateCombo(created.id, { groups: ["basic"] });
+    expect((await db.getComboById(created.id)).groups).toEqual(["basic"]);
 
     await db.updateCombo(created.id, { options: { maxOutputTokens: 4096 } });
     expect((await db.getComboById(created.id)).options).toEqual({ maxOutputTokens: 4096 });
 
     const exported = await db.exportDb();
     expect(exported.combos[0].options).toEqual({ maxOutputTokens: 4096 });
+    expect(exported.combos[0].groups).toEqual(["basic"]);
 
     await db.updateCombo(created.id, { options: {} });
     expect((await db.getComboById(created.id)).options).toEqual({});
 
     await db.importDb(exported);
     expect((await db.getComboByName("c1")).options).toEqual({ maxOutputTokens: 4096 });
+    expect((await db.getComboByName("c1")).groups).toEqual(["basic"]);
 
-    // Combos without options (older rows/backups) read back as {}.
+    // Combos without options/groups (older rows/backups) read back as empty.
     await db.createCombo({ name: "c2", models: [] });
     expect((await db.getComboByName("c2")).options).toEqual({});
+    expect((await db.getComboByName("c2")).groups).toEqual([]);
   });
 });
 
@@ -176,11 +189,13 @@ describe("combos.options column on an existing DB", () => {
     db = await reopen();
     const cols = db.all("PRAGMA table_info(combos)").map((c) => c.name);
     expect(cols).toContain("options");
+    expect(cols).toContain("groups");
 
     const repo = await import("@/lib/db/repos/combosRepo.js");
     const legacy = await repo.getComboByName("legacy");
-    expect(legacy).toMatchObject({ models: ["openai/gpt-x"], options: {} });
-    const updated = await repo.updateCombo("old", { options: { displayName: "Legacy" } });
+    expect(legacy).toMatchObject({ models: ["openai/gpt-x"], options: {}, groups: [] });
+    const updated = await repo.updateCombo("old", { options: { displayName: "Legacy" }, groups: ["Team"] });
     expect(updated.options).toEqual({ displayName: "Legacy" });
+    expect(updated.groups).toEqual(["Team"]);
   });
 });

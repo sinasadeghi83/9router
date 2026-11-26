@@ -23,6 +23,45 @@ describe("combo thinkingLevels option", () => {
   });
 });
 
+describe("combo levelModels option", () => {
+  it("normalizes per-level lists, infers thinking levels, and canonicalises order", () => {
+    expect(normalizeComboOptions({
+      levelModels: { HIGH: [" cx/gpt-6-sol ", "cx/gpt-6-sol"], low: "oc/cheap, oc/cheaper" },
+    })).toEqual({
+      value: {
+        thinkingLevels: ["low", "high"],
+        levelModels: { high: ["cx/gpt-6-sol"], low: ["oc/cheap", "oc/cheaper"] },
+      },
+      errors: [],
+    });
+  });
+
+  it("rejects invalid levels, non-list values, unselected levels and oversized lists", () => {
+    expect(normalizeComboOptions({ levelModels: { turbo: ["x/y"] } }).errors[0]).toMatch(/not one of/);
+    expect(normalizeComboOptions({ levelModels: { high: 5 } }).errors[0]).toMatch(/list of models/);
+    expect(normalizeComboOptions({
+      thinkingLevels: ["low"],
+      levelModels: { high: ["x/y"] },
+    }).errors.join()).toMatch(/not one of the selected thinkingLevels/);
+    expect(normalizeComboOptions({
+      levelModels: { high: Array.from({ length: 21 }, (_, i) => `p/m${i}`) },
+    }).errors.join()).toMatch(/more than 20 models/);
+    expect(normalizeComboOptions({ levelModels: { high: ["x".repeat(300)] } }).errors.join()).toMatch(/at most 256/);
+  });
+
+  it("a stored invalid mapping is dropped on read instead of poisoning the combo", () => {
+    expect(readComboOptions({
+      thinkingLevels: ["low", "high"],
+      levelModels: { high: ["x/y"], turbo: ["z/w"] },
+      displayName: "x",
+    })).toEqual({
+      displayName: "x",
+      thinkingLevels: ["low", "high"],
+      levelModels: { high: ["x/y"] },
+    });
+  });
+});
+
 describe("ultra is selectable for combos", () => {
   it("is accepted as a default effort and as an advertised level, ordered last", () => {
     expect(normalizeComboOptions({ reasoningEffort: "ULTRA" }).value).toEqual({ reasoningEffort: "ultra" });

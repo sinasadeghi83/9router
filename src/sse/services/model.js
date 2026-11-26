@@ -1,6 +1,7 @@
 // Re-export from open-sse with localDb integration
 import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
+import { parseComboLevelSuffix } from "open-sse/services/comboLevels.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
@@ -86,6 +87,25 @@ export async function getComboOptions(modelStr) {
   if (typeof modelStr !== "string" || !modelStr || modelStr.includes("/")) return null;
   const combo = await getComboByName(modelStr);
   return combo ? (combo.options || {}) : null;
+}
+
+/**
+ * Resolve a request model to a combo target. Unlike getComboModels this also
+ * accepts a thinking-level suffix (Combo(high)) and resolves it to the base
+ * combo, returning the parsed suffix so the caller can select level models.
+ * @returns {Promise<{name: string, models: string[], options: object, parsedSuffix: object|null}|null>}
+ */
+export async function getComboTarget(modelStr) {
+  if (typeof modelStr !== "string" || !modelStr || modelStr.includes("/")) return null;
+  const exact = await getComboByName(modelStr);
+  if (exact && Array.isArray(exact.models) && exact.models.length > 0) {
+    return { name: exact.name, models: exact.models, options: exact.options || {}, parsedSuffix: null };
+  }
+  const parsed = parseComboLevelSuffix(modelStr);
+  if (!parsed.override || parsed.base === modelStr) return null;
+  const combo = await getComboByName(parsed.base);
+  if (!combo || !Array.isArray(combo.models) || combo.models.length === 0) return null;
+  return { name: combo.name, models: combo.models, options: combo.options || {}, parsedSuffix: parsed };
 }
 
 /**

@@ -5,8 +5,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const fx = vi.hoisted(() => ({
   combos: [
-    { id: "c1", name: "Main", models: ["openai/model-a", "openai/model-b"] },
-    { id: "c2", name: "other", models: ["openai/model-c"] },
+    { id: "c1", name: "Main", models: ["openai/model-a", "openai/model-b"], groups: ["premium", "Team A"] },
+    { id: "c2", name: "other", models: ["openai/model-c"], groups: ["basic"] },
   ],
   nodes: [{ id: "openai-compatible-chat-n1", type: "openai-compatible", prefix: "mock" }],
   aliases: { fast: "openai/model-a", bee: "openai/model-b" },
@@ -50,6 +50,9 @@ beforeEach(() => {
   key("cx", { restricted: true, allow: ["cx/gpt-5"] });
   key("node", { restricted: true, allow: ["mock/glm-4"] });
   key("tavily", { restricted: true, allow: ["tavily", "Main"] });
+  key("group", { restricted: true, allow: [], groups: ["PREMIUM"] });
+  key("group-union", { restricted: true, allow: ["other"], groups: ["premium"] });
+  key("unknown-group", { restricted: true, allow: [], groups: ["nope"] });
 });
 
 describe("unrestricted passthrough", () => {
@@ -172,6 +175,23 @@ describe("provider-as-model (search / fetch)", () => {
   });
 });
 
+describe("restricted: allow by combo group", () => {
+  it("allows the group's combos (case-insensitive), denies everything else", async () => {
+    expect(await status("sk-group", "Main")).toBe(200);
+    expect(await status("sk-group", "other")).toBe(403);
+    expect(await status("sk-group", "openai/model-a")).toBe(403);
+    expect(await status("sk-group", "fast")).toBe(403);
+  });
+  it("unions groups with the allow list", async () => {
+    expect(await status("sk-group-union", "Main")).toBe(200);
+    expect(await status("sk-group-union", "other")).toBe(200);
+    expect(await status("sk-group-union", "openai/model-c")).toBe(403);
+  });
+  it("an unknown or deleted group grants nothing", async () => {
+    for (const m of ["Main", "other", "openai/model-a"]) expect(await status("sk-unknown-group", m)).toBe(403);
+  });
+});
+
 describe("/v1/models filtering", () => {
   const list = [
     { id: "Main", object: "model", owned_by: "combo" },
@@ -190,6 +210,9 @@ describe("/v1/models filtering", () => {
     expect(await ids("sk-cx")).toEqual(["cx/gpt-5"]);
     expect(await ids("sk-node")).toEqual(["mock/glm-4"]);
     expect(await ids("sk-tavily")).toEqual(["Main", "tavily/search"]);
+    expect(await ids("sk-group")).toEqual(["Main"]);
+    expect(await ids("sk-group-union")).toEqual(["Main", "other"]);
+    expect(await ids("sk-unknown-group")).toEqual([]);
     expect(await ids("sk-empty")).toEqual([]);
   });
   it("leaves the list untouched for an unrestricted key", async () => {
@@ -209,26 +232,40 @@ describe("capacity-adapter models", () => {
 
 describe("helpers: storage + validation", () => {
   it("columns -> access fails closed", () => {
-    expect(helpers.keyAccessFromColumns(0, '["x"]')).toEqual({ restricted: false, allow: [] });
-    expect(helpers.keyAccessFromColumns(null, null)).toEqual({ restricted: false, allow: [] }); // pre-migration row
-    expect(helpers.keyAccessFromColumns(1, "not json")).toEqual({ restricted: true, allow: [] });
-    expect(helpers.keyAccessFromColumns(1, '{"a":1}')).toEqual({ restricted: true, allow: [] });
-    expect(helpers.keyAccessFromColumns(1, '[" a ", "A", "", 3, "b"]')).toEqual({ restricted: true, allow: ["a", "b"] });
+    expect(helpers.keyAccessFromColumns(0, '["x"]')).toEqual({ restricted: false, allow: [], groups: [] });
+    expect(helpers.keyAccessFromColumns(null, null)).toEqual({ restricted: false, allow: [], groups: [] }); // pre-migration row
+    expect(helpers.keyAccessFromColumns(1, "not json")).toEqual({ restricted: true, allow: [], groups: [] });
+    expect(helpers.keyAccessFromColumns(1, '{"a":1}')).toEqual({ restricted: true, allow: [], groups: [] });
+    expect(helpers.keyAccessFromColumns(1, '[" a ", "A", "", 3, "b"]')).toEqual({ restricted: true, allow: ["a", "b"], groups: [] });
+    expect(helpers.keyAccessFromColumns(1, '["a"]', '[" G1 ", "g1", "", 3, "G2"]'))
+      .toEqual({ restricted: true, allow: ["a"], groups: ["G1", "G2"] });
+    // A corrupt group list can only shrink access, never widen it.
+    expect(helpers.keyAccessFromColumns(1, '["a"]', "not json")).toEqual({ restricted: true, allow: ["a"], groups: [] });
   });
   it("access -> columns", () => {
-    expect(helpers.keyAccessToColumns(undefined)).toEqual({ accessRestricted: 0, accessAllow: "[]" });
-    expect(helpers.keyAccessToColumns({ restricted: true, allow: ["x", "X"] })).toEqual({ accessRestricted: 1, accessAllow: '["x"]' });
-    expect(helpers.keyAccessToColumns({ restricted: false, allow: ["x"] })).toEqual({ accessRestricted: 0, accessAllow: "[]" });
+    expect(helpers.keyAccessToColumns(undefined)).toEqual({ accessRestricted: 0, accessAllow: "[]", accessGroups: "[]" });
+    expect(helpers.keyAccessToColumns({ restricted: true, allow: ["x", "X"] }))
+      .toEqual({ accessRestricted: 1, accessAllow: '["x"]', accessGroups: "[]" });
+    expect(helpers.keyAccessToColumns({ restricted: true, allow: [], groups: ["Plan A", "team-b"] }))
+      .toEqual({ accessRestricted: 1, accessAllow: "[]", accessGroups: '["Plan A","team-b"]' });
+    expect(helpers.keyAccessToColumns({ restricted: false, allow: ["x"], groups: ["g"] }))
+      .toEqual({ accessRestricted: 0, accessAllow: "[]", accessGroups: "[]" });
   });
   it("input validation rejects rather than repairs", () => {
     const v = helpers.validateKeyAccessInput;
-    expect(v({ restricted: true, allow: [" Main ", "main", "cx/gpt-5"] })).toEqual({ ok: true, value: { restricted: true, allow: ["Main", "cx/gpt-5"] } });
-    expect(v({ restricted: false })).toEqual({ ok: true, value: { restricted: false, allow: [] } });
+    expect(v({ restricted: true, allow: [" Main ", "main", "cx/gpt-5"] }))
+      .toEqual({ ok: true, value: { restricted: true, allow: ["Main", "cx/gpt-5"], groups: [] } });
+    expect(v({ restricted: false })).toEqual({ ok: true, value: { restricted: false, allow: [], groups: [] } });
+    expect(v({ restricted: true, allow: [], groups: [" Premium ", "premium", "Team A"] }))
+      .toEqual({ ok: true, value: { restricted: true, allow: [], groups: ["Premium", "Team A"] } });
     expect(v(null).ok).toBe(false);
     expect(v([]).ok).toBe(false);
     expect(v({ restricted: "yes", allow: [] }).ok).toBe(false);
     expect(v({ restricted: true, allow: "Main" }).ok).toBe(false);
     expect(v({ restricted: true, allow: [1] }).ok).toBe(false);
+    expect(v({ restricted: true, allow: [], groups: "premium" }).ok).toBe(false);
+    expect(v({ restricted: true, allow: [], groups: [1] }).ok).toBe(false);
+    expect(v({ restricted: true, allow: [], groups: ["x".repeat(70)] }).ok).toBe(false);
     expect(v({ restricted: true, allow: [], mode: "deny" }).ok).toBe(false); // no deny mode
     expect(v({ restricted: true, allow: Array.from({ length: KEY_ACCESS_MAX_ENTRIES + 1 }, (_, i) => `m${i}`) }).ok).toBe(false);
     expect(v({ restricted: true, allow: ["x".repeat(300)] }).ok).toBe(false);

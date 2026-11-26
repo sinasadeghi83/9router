@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
 import { normalizeComboOptions } from "open-sse/services/comboOptions.js";
+import { validateComboGroupsInput } from "@/shared/utils/comboGroups.js";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, models, kind, options } = body;
+    const { name, models, kind, groups, options } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -44,7 +45,18 @@ export async function POST(request) {
       return NextResponse.json({ error: normalized.errors.join("; ") }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: models || [], kind: kind || null, options: normalized.value });
+    const checkedGroups = validateComboGroupsInput(groups);
+    if (!checkedGroups.ok) {
+      return NextResponse.json({ error: checkedGroups.error }, { status: 400 });
+    }
+
+    const combo = await createCombo({
+      name,
+      models: models || [],
+      kind: kind || null,
+      groups: checkedGroups.value,
+      options: normalized.value,
+    });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {

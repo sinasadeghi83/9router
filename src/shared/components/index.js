@@ -17,6 +17,7 @@ export { default as OAuthModal } from "./OAuthModal";
 export { default as ModelSelectModal } from "./ModelSelectModal";
 export { default as ManualConfigModal } from "./ManualConfigModal";
 export { default as ComboFormModal } from "./ComboFormModal";
+export { default as ComboGroupsField } from "./ComboGroupsField";
 export { default as ComboOptionsFields, comboOptionsToDraft, draftToComboOptions, validateComboOptionsDraft } from "./ComboOptionsFields";
 export { default as McpMarketplaceModal } from "./McpMarketplaceModal";
 export { default as LanguageSwitcher } from "./LanguageSwitcher";
@@ -43,5 +44,4 @@ export { default as SmartPolicyModal } from "./SmartPolicyModal";
 
 // Layouts
 export * from "./layouts";
-
 

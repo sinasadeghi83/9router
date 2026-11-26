@@ -6,7 +6,8 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
-import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle, Badge, SmartPolicyModal, ComboOptionsFields, comboOptionsToDraft, draftToComboOptions, validateComboOptionsDraft } from "@/shared/components";
+import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle, Badge, SmartPolicyModal, ComboOptionsFields, ComboGroupsField, comboOptionsToDraft, draftToComboOptions, validateComboOptionsDraft } from "@/shared/components";
+import { collectComboGroups } from "@/shared/utils/comboGroups.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
@@ -82,6 +83,7 @@ export default function CombosPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState("");
   const { copied, copy } = useCopyToClipboard();
 
   useEffect(() => {
@@ -97,16 +99,18 @@ export default function CombosPage() {
   const selectedCombos = combos.filter((c) => selectedIds.includes(c.id));
   const someSelected = selectedIds.length > 0;
 
-  // Case-insensitive search over the combo name and its model ids, so both
-  // "deepseek" and "deepseek-v4.1-flash" find the right rows.
+  const allGroups = collectComboGroups(combos);
+  // Case-insensitive search over the combo name, display name, groups and model
+  // ids, so both "deepseek" and "deepseek-v4.1-flash" find the right rows.
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredCombos = normalizedQuery
-    ? combos.filter((c) => {
-        if (String(c.name || "").toLowerCase().includes(normalizedQuery)) return true;
-        if (String(c.options?.displayName || "").toLowerCase().includes(normalizedQuery)) return true;
-        return (c.models || []).some((m) => String(m).toLowerCase().includes(normalizedQuery));
-      })
-    : combos;
+  const filteredCombos = combos.filter((c) => {
+    if (groupFilter && !(c.groups || []).some((g) => g.toLowerCase() === groupFilter.toLowerCase())) return false;
+    if (!normalizedQuery) return true;
+    if (String(c.name || "").toLowerCase().includes(normalizedQuery)) return true;
+    if (String(c.options?.displayName || "").toLowerCase().includes(normalizedQuery)) return true;
+    if ((c.groups || []).some((g) => String(g).toLowerCase().includes(normalizedQuery))) return true;
+    return (c.models || []).some((m) => String(m).toLowerCase().includes(normalizedQuery));
+  });
 
   // Select-all follows the search: with a query active it must only reach the
   // rows on screen, otherwise the bulk Delete would take out hidden combos.
@@ -434,6 +438,21 @@ export default function CombosPage() {
               </button>
             )}
           </div>
+          {allGroups.length > 0 && (
+            <select
+              value={groupFilter}
+              onChange={(e) => setGroupFilter(e.target.value)}
+              aria-label="Filter by combo group"
+              className="w-full rounded-[10px] border border-transparent bg-surface-2 px-3 py-2 text-sm text-text-main focus:border-brand-500/40 focus:outline-none focus:ring-2 focus:ring-brand-500/30 sm:w-64"
+            >
+              <option value="">All groups</option>
+              {allGroups.map((group) => (
+                <option key={group.name} value={group.name}>
+                  {group.name} ({group.count})
+                </option>
+              ))}
+            </select>
+          )}
           <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto whitespace-nowrap">
             Create Combo
           </Button>
@@ -600,6 +619,7 @@ export default function CombosPage() {
           activeProviders={activeProviders}
           getCaps={getCaps}
           comboByName={Object.fromEntries(combos.map((c) => [c.name, c.models]))}
+          groupSuggestions={allGroups.map((g) => g.name)}
         />
       )}
 
@@ -613,6 +633,7 @@ export default function CombosPage() {
           activeProviders={activeProviders}
           getCaps={getCaps}
           comboByName={Object.fromEntries(combos.map((c) => [c.name, c.models]))}
+          groupSuggestions={allGroups.map((g) => g.name)}
         />
       )}
 
@@ -713,6 +734,9 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
               {options.hidden && (
                 <span className="shrink-0 rounded bg-black/5 px-1.5 py-0.5 text-[10px] text-text-muted dark:bg-white/5" title="Hidden from /v1/models">hidden</span>
               )}
+              {(combo.groups || []).map((group) => (
+                <span key={group} className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary" title={`Combo group: ${group}`}>{group}</span>
+              ))}
             </div>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
               {combo.models.length === 0 ? (
@@ -1209,10 +1233,11 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   );
 }
 
-function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null, getCaps = null, comboByName = {} }) {
+function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null, getCaps = null, comboByName = {}, groupSuggestions = [] }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
+  const [groups, setGroups] = useState(combo?.groups || []);
   const [optionsDraft, setOptionsDraft] = useState(() => comboOptionsToDraft(combo?.options));
   const optionErrors = validateComboOptionsDraft(optionsDraft);
   const hasOptionErrors = Object.keys(optionErrors).length > 0;
@@ -1313,7 +1338,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     if (!validateName(name)) return;
     setSaving(true);
     if (hasOptionErrors) return;
-    await onSave({ name: name.trim(), models, options: draftToComboOptions(optionsDraft) });
+    await onSave({ name: name.trim(), models, groups, options: draftToComboOptions(optionsDraft) });
     setSaving(false);
   };
 
@@ -1340,6 +1365,9 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
               Only letters, numbers, -, _ and . allowed
             </p>
           </div>
+
+          {/* Groups */}
+          <ComboGroupsField groups={groups} onChange={setGroups} suggestions={groupSuggestions} />
 
           {/* Models */}
           <div>
@@ -1393,6 +1421,8 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             onChange={setOptionsDraft}
             errors={optionErrors}
             derived={{ contextWindow: derivedCaps?.contextWindow, maxOutput: derivedCaps?.maxOutput, thinkingLevels: derivedLevels }}
+            activeProviders={activeProviders}
+            modelAliases={modelAliases}
             defaultOpen={Object.keys(combo?.options || {}).length > 0}
           />
 

@@ -105,6 +105,51 @@ describe("chat applies combo request options", () => {
     expect(mocks.handleChatCore.mock.calls[0][0].body.temperature).toBeUndefined();
   });
 
+  it("routes Combo(level) to the level's mapped model and forwards the suffix", async () => {
+    fx.combos = [{
+      name: "tuned",
+      models: ["openai/gpt-4o"],
+      options: { levelModels: { high: ["openai/gpt-4o-high"] } },
+    }];
+    const res = await handleChat(post("/v1/chat/completions", { model: "tuned(high)", messages: [{ role: "user", content: "hi" }] }));
+    expect(res.status).toBe(200);
+    expect(mocks.handleChatCore.mock.calls[0][0].body.model).toBe("openai/gpt-4o-high(high)");
+  });
+
+  it("selects the mapping from an explicit client reasoning effort, without forcing a suffix", async () => {
+    fx.combos = [{
+      name: "tuned",
+      models: ["openai/gpt-4o"],
+      options: { levelModels: { high: ["openai/gpt-4o-high"] } },
+    }];
+    await handleChat(post("/v1/chat/completions", {
+      model: "tuned",
+      reasoning_effort: "high",
+      messages: [{ role: "user", content: "hi" }],
+    }));
+    expect(mocks.handleChatCore.mock.calls[0][0].body.model).toBe("openai/gpt-4o-high");
+  });
+
+  it("does not let the combo's own default effort select a level mapping", async () => {
+    fx.combos = [{
+      name: "tuned",
+      models: ["openai/gpt-4o"],
+      options: { reasoningEffort: "low", levelModels: { low: ["openai/cheap"] } },
+    }];
+    await handleChat(post("/v1/chat/completions", { model: "tuned", messages: [{ role: "user", content: "hi" }] }));
+    expect(mocks.handleChatCore.mock.calls[0][0].body.model).toBe("openai/gpt-4o");
+    expect(mocks.handleChatCore.mock.calls[0][0].body.reasoning_effort).toBe("low");
+  });
+
+  it("resolves a nested combo's level mapping through the forwarded suffix", async () => {
+    fx.combos = [
+      { name: "outer", models: ["inner"], options: {} },
+      { name: "inner", models: ["openai/base"], options: { levelModels: { high: ["openai/high"] } } },
+    ];
+    await handleChat(post("/v1/chat/completions", { model: "outer(high)", messages: [{ role: "user", content: "hi" }] }));
+    expect(mocks.handleChatCore.mock.calls[0][0].body.model).toBe("openai/high(high)");
+  });
+
   it("still routes a hidden combo", async () => {
     fx.combos = [{ name: "secret", models: ["openai/gpt-4o"], options: { hidden: true } }];
     const res = await handleChat(post("/v1/chat/completions", { model: "secret", messages: [{ role: "user", content: "hi" }] }));

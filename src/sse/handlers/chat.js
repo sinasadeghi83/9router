@@ -9,7 +9,8 @@ import {
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo, getComboModels, getComboOptions } from "../services/model.js";
+import { getModelInfo, getComboOptions, getComboTarget } from "../services/model.js";
+import { resolveComboModelsWithLevel, explicitLevelFromBody } from "open-sse/services/comboLevels.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
@@ -50,6 +51,85 @@ async function withComboRequestOptions(body, comboName, request) {
     return body;
   }
 }
+
+/**
+ * Route a combo request: resolve level-specific models, apply combo request
+ * defaults, augment with capacity adapters and run fusion / combo fallback.
+ * The access decision was already made on the requested target before this.
+ */
+async function handleComboRequest({ body, comboTarget, request, clientRawRequest, apiKey, keyAccess, settings, sessionId, clientLevelIntent }) {
+  const comboName = comboTarget.name;
+  // Resolve the level BEFORE combo request defaults are applied: a default
+  // reasoningEffort is a request default, not a routing hint.
+  const levelSelection = resolveComboModelsWithLevel(comboTarget, comboTarget.parsedSuffix, body, clientLevelIntent);
+  const comboModels = levelSelection.models;
+  const levelLog = levelSelection.mappedLevel
+    ? `, level ${levelSelection.mappedLevel}`
+    : levelSelection.requestedLevel
+      ? `, level ${levelSelection.requestedLevel} (unmapped)`
+      : "";
+  body = await withComboRequestOptions(body, comboName, request);
+
+  const comboStrategies = settings.comboStrategies || {};
+  const comboCfg = comboStrategies[comboName] || {};
+  const comboStrategy = comboCfg.fallbackStrategy || settings.comboStrategy || "fallback";
+  const requiredCapabilities = detectRequiredCapabilities(body);
+  const augmentedModels = await filterAdapterModels(
+    keyAccess,
+    augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings),
+    comboModels,
+  );
+  const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
+  const handleSingleModel = withCapacityAdapterStripping(
+    (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, undefined, clientLevelIntent),
+    adapterAdded,
+  );
+
+  if (comboStrategy === "fusion") {
+    log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: fusion${levelLog})`);
+    return handleFusionChat({
+      body,
+      models: comboModels,
+      handleSingleModel: (b, m, isPanel) => {
+        let cleanRawReq = clientRawRequest;
+        if (isPanel && clientRawRequest) {
+          const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
+          cleanRawReq = { ...clientRawRequest, body: cleanBody };
+        }
+        return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, undefined, clientLevelIntent);
+      },
+      log,
+      comboName,
+      judgeModel: comboCfg.judgeModel,
+      tuning: comboCfg.fusionTuning,
+    });
+  }
+
+  const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+  log.info("CHAT", `Combo "${comboName}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}${levelLog})`);
+  return handleComboChat({
+    body,
+    models: augmentedModels,
+    handleSingleModel,
+    log,
+    comboName,
+    comboStrategy,
+    comboStickyLimit,
+    sessionId,
+    smartPolicy: comboCfg.smartPolicy || "smart",
+    sessionSticky: comboCfg.sessionSticky !== false,
+    confidenceThreshold: typeof comboCfg.confidenceThreshold === "number" ? comboCfg.confidenceThreshold : 0.8,
+    resolveSmartChoice: comboStrategy === "smart"
+      ? (b, m) => resolveSmartChoice({
+          body: b,
+          models: m,
+          routerModel: comboCfg.routerModel,
+          log,
+        })
+      : null,
+  });
+}
+
 
 /**
  * Handle chat completion request
@@ -128,63 +208,24 @@ export async function handleChat(request, clientRawRequest = null) {
 
   const requiredCapabilities = detectRequiredCapabilities(body);
 
-  // Check if model is a combo (has multiple models with fallback)
-  const comboModels = await getComboModels(modelStr);
-  if (comboModels) {
-    body = await withComboRequestOptions(body, modelStr, request);
-    // Check for combo-specific strategy first, fallback to global
-    const comboStrategies = settings.comboStrategies || {};
-    const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
-    const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
-    const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings), comboModels);
-    const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
+  // Capture the client's explicit thinking intent BEFORE combo defaults can add
+  // one; nested combos must not treat an outer combo default as a routing hint.
+  const clientLevelIntent = explicitLevelFromBody(body);
 
-    if (comboStrategy === "fusion") {
-      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
-      return handleFusionChat({
-        body,
-        models: comboModels,
-        handleSingleModel: (b, m, isPanel) => {
-          let cleanRawReq = clientRawRequest;
-          if (isPanel && clientRawRequest) {
-            const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
-            cleanRawReq = { ...clientRawRequest, body: cleanBody };
-          }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
-        },
-        log,
-        comboName: modelStr,
-        judgeModel: comboStrategies[modelStr]?.judgeModel,
-        tuning: comboStrategies[modelStr]?.fusionTuning,
-      });
-    }
-
-    const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    const comboCfg = comboStrategies[modelStr] || {};
-    log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-    return handleComboChat({
+  // Combo request (plain name or Combo(level) suffix). The helper resolves the
+  // level-specific model list, applies the combo's request defaults, and routes.
+  const comboTarget = await getComboTarget(modelStr);
+  if (comboTarget) {
+    return handleComboRequest({
       body,
-      models: augmentedModels,
-      handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
-        adapterAdded
-      ),
-      log,
-      comboName: modelStr,
-      comboStrategy,
-      comboStickyLimit,
+      comboTarget,
+      request,
+      clientRawRequest,
+      apiKey,
+      keyAccess,
+      settings,
       sessionId,
-      smartPolicy: comboCfg.smartPolicy || "smart",
-      sessionSticky: comboCfg.sessionSticky !== false,
-      confidenceThreshold: typeof comboCfg.confidenceThreshold === "number" ? comboCfg.confidenceThreshold : 0.8,
-      resolveSmartChoice: comboStrategy === "smart"
-        ? (b, m) => resolveSmartChoice({
-            body: b,
-            models: m,
-            routerModel: comboCfg.routerModel,
-            log,
-          })
-        : null,
+      clientLevelIntent,
     });
   }
 
@@ -198,7 +239,7 @@ export async function handleChat(request, clientRawRequest = null) {
       body,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, undefined, clientLevelIntent),
         adapterAdded
       ),
       log,
@@ -207,83 +248,36 @@ export async function handleChat(request, clientRawRequest = null) {
     });
   }
 
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, contextMarker ? `${modelStr.slice(modelStr.indexOf("/") + 1)}[${contextMarker}]` : null);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, contextMarker ? `${modelStr.slice(modelStr.indexOf("/") + 1)}[${contextMarker}]` : null, clientLevelIntent);
 }
 
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null, clientLevelIntent = undefined) {
+  // A combo member may itself be a combo, possibly with a thinking-level suffix.
+  // Resolve it before getModelInfo, which would otherwise infer a provider for
+  // an unknown suffixed name and never reach the combo branch.
+  const comboTarget = await getComboTarget(modelStr);
+  if (comboTarget) {
+    const chatSettings = await getSettings();
+    const keyAccess = await getKeyAccessContext(request);
+    const nestedSession = resolveSessionIdentity({ headers: clientRawRequest?.headers, body });
+    return handleComboRequest({
+      body,
+      comboTarget,
+      request,
+      clientRawRequest,
+      apiKey,
+      keyAccess,
+      settings: chatSettings,
+      sessionId: nestedSession?.sessionId || null,
+      clientLevelIntent,
+    });
+  }
+
   const modelInfo = await getModelInfo(modelStr);
-
-  // If provider is null, this might be a combo name - check and handle
   if (!modelInfo.provider) {
-    const comboModels = await getComboModels(modelStr);
-    if (comboModels) {
-      // Nested combo: its own defaults fill what the outer combo/client left unset.
-      body = await withComboRequestOptions(body, modelStr, request);
-      const chatSettings = await getSettings();
-      // Check for combo-specific strategy first, fallback to global
-      const comboStrategies = chatSettings.comboStrategies || {};
-      const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
-      const comboStrategy = comboSpecificStrategy || chatSettings.comboStrategy || "fallback";
-      const requiredCapabilities = detectRequiredCapabilities(body);
-      // Nested combo (a combo member that is itself a combo): the access decision
-      // was made on the outer target; only drop adapter models the key may not call.
-      const keyAccess = await getKeyAccessContext(request);
-      const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, chatSettings), comboModels);
-      const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
-
-      if (comboStrategy === "fusion") {
-        log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
-        return handleFusionChat({
-          body,
-          models: comboModels,
-          handleSingleModel: (b, m, isPanel) => {
-            let cleanRawReq = clientRawRequest;
-            if (isPanel && clientRawRequest) {
-              const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
-              cleanRawReq = { ...clientRawRequest, body: cleanBody };
-            }
-            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
-          },
-          log,
-          comboName: modelStr,
-          judgeModel: comboStrategies[modelStr]?.judgeModel,
-          tuning: comboStrategies[modelStr]?.fusionTuning,
-        });
-      }
-
-      const comboStickyLimit = chatSettings.comboStickyRoundRobinLimit;
-      const comboCfg = comboStrategies[modelStr] || {};
-      const nestedSession = resolveSessionIdentity({ headers: clientRawRequest?.headers, body });
-      const nestedSessionId = nestedSession?.sessionId || null;
-      log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-      return handleComboChat({
-        body,
-        models: augmentedModels,
-        handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
-          adapterAdded
-        ),
-        log,
-        comboName: modelStr,
-        comboStrategy,
-        comboStickyLimit,
-        sessionId: nestedSessionId,
-        smartPolicy: comboCfg.smartPolicy || "smart",
-        sessionSticky: comboCfg.sessionSticky !== false,
-        confidenceThreshold: typeof comboCfg.confidenceThreshold === "number" ? comboCfg.confidenceThreshold : 0.8,
-        resolveSmartChoice: comboStrategy === "smart"
-          ? (b, m) => resolveSmartChoice({
-              body: b,
-              models: m,
-              routerModel: comboCfg.routerModel,
-              log,
-            })
-          : null,
-      });
-    }
     log.warn("CHAT", "Invalid model format", { model: modelStr });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   }

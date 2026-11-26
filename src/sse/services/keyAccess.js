@@ -16,6 +16,11 @@
 //     `openai/MAIN`) is not;
 //   * search/fetch (provider IS the model) are allowed iff the resolved
 //     provider id is listed, or the request is a listed combo.
+//   * a restricted key may also grant combo GROUPS (access.groups). A group
+//     grants the combos currently assigned to it, and only those: member models
+//     stay callable through their combo, never directly. Groups are re-read on
+//     every request, so membership edits apply immediately and an unknown or
+//     deleted group grants nothing.
 //
 // An allowed combo grants its members when they are reached THROUGH that combo
 // (the check runs once, on the requested target, before combo expansion). It
@@ -24,8 +29,9 @@
 // touches a provider account.
 import { getApiKeyByKey } from "@/lib/db/repos/apiKeysRepo.js";
 import { getCombos } from "@/lib/db/repos/combosRepo.js";
-import { getModelInfo, getComboModels } from "./model.js";
+import { getModelInfo, getComboTarget } from "./model.js";
 import { resolveProviderId } from "@/shared/constants/providers.js";
+import { groupCombosByName } from "@/shared/utils/comboGroups.js";
 import {
   KEY_ACCESS_COMBO_OWNER,
   KEY_ACCESS_PROVIDER_AS_MODEL_KINDS,
@@ -76,6 +82,7 @@ export async function getKeyAccessContext(request) {
     keyId: record.id,
     keyName: record.name || record.id,
     allow: record.access.allow || [],
+    groups: record.access.groups || [],
     _sets: null,
   };
 }
@@ -84,7 +91,8 @@ export async function getKeyAccessContext(request) {
 // and resolved provider ids (for provider-as-model kinds).
 async function getAllowSets(ctx) {
   if (ctx._sets) return ctx._sets;
-  const comboNames = new Set((await getCombos()).map((c) => lower(c.name)));
+  const comboRows = await getCombos();
+  const comboNames = new Set(comboRows.map((c) => lower(c.name)));
   const combos = new Set();
   const models = new Set();
   const providers = new Set();
@@ -97,6 +105,14 @@ async function getAllowSets(ctx) {
     const info = await getModelInfo(entry);
     if (info?.provider && info.model) models.add(canonicalModel(info.provider, info.model));
     if (!entry.includes("/")) providers.add(lower(resolveProviderId(entry)));
+  }
+  // Group grants are combos-only: a listed group adds its current members to the
+  // allowed-combo set; their member models are reached through the combo.
+  if (ctx.groups?.length) {
+    const groupCombos = groupCombosByName(comboRows);
+    for (const group of ctx.groups) {
+      for (const comboName of groupCombos.get(lower(group)) || []) combos.add(comboName);
+    }
   }
   ctx._sets = { combos, models, providers };
   return ctx._sets;
@@ -124,9 +140,11 @@ export async function enforceKeyAccess(ctx, requested) {
   if (!ctx) return null;
   if (typeof requested !== "string" || !requested) return keyAccessDeniedResponse(ctx, String(requested ?? ""));
   const sets = await getAllowSets(ctx);
-  const comboModels = await getComboModels(requested);
-  const allowed = comboModels
-    ? sets.combos.has(lower(requested))
+  // getComboTarget also resolves a thinking-level suffix (Combo(high)) to its
+  // base combo, so the gate always runs on the target the combo actually routes.
+  const combo = await getComboTarget(requested);
+  const allowed = combo
+    ? sets.combos.has(lower(combo.name))
     : await isModelStringAllowed(ctx, requested);
   return allowed ? null : keyAccessDeniedResponse(ctx, requested);
 }

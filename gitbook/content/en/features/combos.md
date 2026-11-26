@@ -118,6 +118,45 @@ Cursor/Cline/Any tool:
 
 ---
 
+## Combo Groups
+
+Combos can carry any number of **group labels**. Groups are created implicitly: type a new label in the combo form and it becomes selectable everywhere else. A combo can belong to several groups, and removing a label from every combo removes the group.
+
+Groups are what you grant to an API key. In **Dashboard → Endpoint**, open a key, enable **Restrict access**, and use **Add group**. The key may then call every combo currently assigned to the granted groups. Group membership is read on every request, so adding or removing a combo from a group takes effect immediately.
+
+A group grants **the combos in it**, not their member models directly. The members are still reached through the combo and keep the normal fallback behavior. To let a client call a member directly, add that model (or its own combo) to the key's allow list as well.
+
+Example: a `premium` group containing `premium-coding` and `premium-chat`. A key restricted to `premium` can call both combos, and `/v1/models` lists only them.
+
+---
+
+## Models per Thinking Level
+
+A combo can route each thinking level to a different model. In the combo's **Settings → Thinking levels**, pick the levels the combo supports, then expand **Models per thinking level** and add one or more models per level (in priority order).
+
+When a request selects a level, the combo tries that level's models first, then continues with the combo's normal model list as fallback. A level with no models always uses the normal list.
+
+Levels are selected in two ways:
+
+- **Model suffix** — `my-combo(high)`, `my-combo(low)`, `my-combo(none)`. A numeric budget such as `my-combo(8192)` maps to the nearest level, and `my-combo(auto)` uses the normal list. The suffix is forwarded to the selected models so they think at the requested level.
+- **Explicit client reasoning effort** — `reasoning_effort`, Claude's `output_config.effort` / `thinking`, or Gemini's `thinkingConfig`. The mapping is selected from that explicit intent.
+
+An explicit suffix wins over the body intent. The combo's own **Reasoning effort** setting is a request *default*, not a routing hint: a plain `my-combo` request never selects a level mapping just because the combo defaults to `low`.
+
+Example:
+```
+Combo: coding
+Models: openai/gpt-6, openai/gpt-6-mini        (fallback)
+low:    openai/gpt-6-mini
+high:   cx/gpt-6-sol
+```
+
+`coding(high)` tries `cx/gpt-6-sol(high)`, then `openai/gpt-6(high)`, then `openai/gpt-6-mini(high)`.
+`coding(low)` tries `openai/gpt-6-mini(low)`, then the normal list.
+`coding` uses the normal list unchanged.
+
+---
+
 ## Combo Routing Strategies
 
 On **Dashboard → Combos**, you can choose how models within each combo are selected for incoming requests:

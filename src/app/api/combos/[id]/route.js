@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { normalizeComboOptions } from "open-sse/services/comboOptions.js";
+import { validateComboGroupsInput } from "@/shared/utils/comboGroups.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -43,10 +44,17 @@ export async function PUT(request, { params }) {
     }
     
     // Only persist known fields; `options` replaces the stored object wholesale
-    // (send {} to clear, omit to keep).
+    // (send {} to clear, omit to keep). `groups` is a targeted patch too.
     const patch = {};
     for (const key of ["name", "models", "kind"]) {
       if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "groups")) {
+      const checkedGroups = validateComboGroupsInput(body.groups);
+      if (!checkedGroups.ok) {
+        return NextResponse.json({ error: checkedGroups.error }, { status: 400 });
+      }
+      patch.groups = checkedGroups.value;
     }
     if (Object.prototype.hasOwnProperty.call(body, "options")) {
       const normalized = normalizeComboOptions(body.options);

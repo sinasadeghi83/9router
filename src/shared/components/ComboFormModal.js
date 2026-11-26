@@ -5,6 +5,8 @@ import Modal from "./Modal";
 import Input from "./Input";
 import Button from "./Button";
 import ModelSelectModal from "./ModelSelectModal";
+import ComboGroupsField from "./ComboGroupsField";
+import { collectComboGroups } from "@/shared/utils/comboGroups.js";
 
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
@@ -57,6 +59,8 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
     : "";
   const [name, setName] = useState(initialName);
   const [models, setModels] = useState(combo?.models || []);
+  const [groups, setGroups] = useState(combo?.groups || []);
+  const [groupSuggestions, setGroupSuggestions] = useState([]);
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -65,6 +69,9 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   useEffect(() => {
     if (!isOpen) return;
     fetch("/api/models/alias").then((r) => r.ok ? r.json() : null).then((d) => d && setModelAliases(d.aliases || {})).catch(() => {});
+    fetch("/api/combos").then((r) => r.ok ? r.json() : null)
+      .then((d) => setGroupSuggestions(collectComboGroups(d?.combos || []).map((g) => g.name)))
+      .catch(() => {});
   }, [isOpen]);
 
   const validateName = (value) => {
@@ -102,7 +109,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   const handleSave = async () => {
     if (!validateName(name)) return;
     setSaving(true);
-    await onSave({ name: forcePrefix + name.trim(), models });
+    await onSave({ name: forcePrefix + name.trim(), models, groups });
     setSaving(false);
   };
 
@@ -130,6 +137,8 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
               {forcePrefix ? `Auto-prefixed with "${forcePrefix}". ` : ""}Only letters, numbers, -, _ and . allowed
             </p>
           </div>
+
+          <ComboGroupsField groups={groups} onChange={setGroups} suggestions={groupSuggestions} />
 
           <div>
             <label className="text-sm font-medium mb-1.5 block">Models</label>
