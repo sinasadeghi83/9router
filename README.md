@@ -1,3 +1,11 @@
+## What's new in this fork
+
+- **Use Anthropic models from OpenAI Responses clients.** Send `POST /v1/responses` requests to a model served through Anthropic Messages and receive Responses JSON or streaming events. The direct translator supports images, PDFs, parallel and custom tools, and explicit conversation history. Native structured output and hosted web search with citations are available on supported routes.
+- **Organize combos into groups.** Assign combos to named groups, filter them in the dashboard, and grant an API key access to a group. Key permissions follow current group membership.
+- **Route by thinking level.** Give a combo a separate model order for each thinking level. For example, `MyCombo(high)` tries the high-effort models first, then falls back to the combo's default model list.
+
+See the [changelog](./CHANGELOG.md) for release details.
+
 <div align="center">
   <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
   

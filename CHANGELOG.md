@@ -1,3 +1,13 @@
+# v0.5.126 (2026-11-27)
+
+## Features
+
+- Route OpenAI Responses requests directly to Anthropic Messages and translate replies back to Responses JSON or SSE. Preserve multimodal inputs, parallel and custom tool calls, explicit history, and usage. Enable native structured output and hosted web search with citations on supported routes.
+
+## Documentation
+
+- Highlight the fork's direct Responses translation, combo groups with API key access, and thinking-level model routing at the top of the README.
+
 # v0.5.125 (2026-11-26)
 
 ## Features
