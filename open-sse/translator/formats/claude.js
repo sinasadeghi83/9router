@@ -6,7 +6,7 @@ import { applyCloaking } from "../../utils/claudeCloaking.js";
 import { resolveSessionId } from "../../utils/sessionManager.js";
 import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { PROVIDERS } from "../../providers/index.js";
-import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { getCapabilitiesForModel, getClaudeResponsesCapabilities } from "../../providers/capabilities.js";
 import { isDeepSeekModel } from "../../providers/models/helpers.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 
@@ -492,7 +492,7 @@ export function hoistToolResultImages(body) {
   return touched ? { ...body, messages } : body;
 }
 
-export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null) {
+export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null, { explicitResponsesHistory = false } = {}) {
   // quirk: MiniMax's Claude-compatible endpoint rejects Anthropic's output_config (400 invalid params)
   if (PROVIDERS[provider]?.quirks?.dropOutputConfig) {
     delete body.output_config;
@@ -584,7 +584,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
     // Pass 1.5: Fix tool_use/tool_result ordering
     // Each tool_use must have tool_result in the NEXT message (not same message with other content)
-    filtered = fixToolUseOrdering(filtered);
+    if (!explicitResponsesHistory) filtered = fixToolUseOrdering(filtered);
     filtered = ensureTrailingUserTurn(filtered, originalLastRole);
 
     body.messages = filtered;
@@ -663,7 +663,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           msg.content = kept;
 
           // Add thinking block if thinking enabled + has tool_use but no thinking
-          if (thinkingEnabled && !hasKeptThinking && hasToolUse) {
+          if (thinkingEnabled && !hasKeptThinking && hasToolUse && (!explicitResponsesHistory || deepSeekServed)) {
             msg.content.unshift(buildThinkingPlaceholder(provider, deepSeekServed));
           }
         }
@@ -682,7 +682,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       // keep the prior behaviour of dropping every non-function tool, which is
       // correct for OpenAI-compatible targets reached through this Claude-format
       // pass (their tools get normalized below to function-style).
-      const supportedTypes = PROVIDERS[provider]?.quirks?.claudeSupportedToolTypes;
+      const webSearch = explicitResponsesHistory && getClaudeResponsesCapabilities(provider, body.model).webSearch;
+      const supportedTypes = webSearch ? [webSearch] : PROVIDERS[provider]?.quirks?.claudeSupportedToolTypes;
       const hasWhitelist = Array.isArray(supportedTypes);
       body.tools = body.tools
         .filter(tool => {
@@ -731,7 +732,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // endpoints (OpenCode Go, Kimi, DeepSeek, GLM, MiniMax) accept image blocks
   // only as user content and silently drop them inside a tool result. Move a
   // tool's screenshot out of the result and into the same user turn.
-  if (provider !== "claude" && !provider?.startsWith("anthropic-compatible")) {
+  if (provider !== "claude" && !(explicitResponsesHistory && provider === "anthropic") && !provider?.startsWith("anthropic-compatible")) {
     body = hoistToolResultImages(body);
   }
 

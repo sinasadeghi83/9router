@@ -197,7 +197,7 @@ export function detectRequiredCapabilities(body) {
 
   // Modalities: current user turn only (trailing user run across each known shape).
   for (const m of trailingUserItems(body.messages)) scanMessage(m);              // openai / claude / hermes / ollama
-  for (const it of trailingUserItems(body.input)) scanContent(it.content);       // responses
+  for (const it of trailingUserItems(body.input)) scanContent(it?.content);       // responses
   const contents = body.contents || body.request?.contents;                      // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
 

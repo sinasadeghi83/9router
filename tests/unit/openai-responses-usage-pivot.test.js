@@ -4,16 +4,8 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
 
 /**
- * Usage must survive the PIVOT, not just the direct openai:openai-responses route.
- *
- * Codex talks the Responses API, so routing it at a Claude connection runs
- * claude -> openai -> openai-responses. The converter that attaches usage to
- * response.completed is the second hop, and it only ever sees the intermediate
- * OpenAI chunk — so whether Codex learns its context size depends on the first
- * hop putting usage on that intermediate chunk.
- *
- * Signature is (targetFormat, sourceFormat, ...) — targetFormat is what the
- * UPSTREAM speaks, sourceFormat is what the CLIENT speaks.
+ * Codex reads token usage from response.completed. Across native and translated
+ * streams, the terminal event must include the complete upstream counts.
  */
 async function runTransform(chunks, targetFormat, provider) {
   const encoder = new TextEncoder();
@@ -84,7 +76,7 @@ const CLAUDE_CHUNKS_WITH_USAGE = [
   { type: "message_stop" },
 ];
 
-describe("OpenAI Responses usage across the pivot", () => {
+describe("OpenAI Responses usage across upstream formats", () => {
   // The reported failure: a Codex session on a Claude connection grew unbounded
   // (101 -> 503 -> 631 messages) until Anthropic rejected it with
   // "prompt is too long: 1676806 tokens > 1000000 maximum", because every
@@ -98,6 +90,7 @@ describe("OpenAI Responses usage across the pivot", () => {
       output_tokens: 42,
       total_tokens: 13842,
       input_tokens_details: { cached_tokens: 12000 },
+      output_tokens_details: { reasoning_tokens: 0 },
     });
   });
 

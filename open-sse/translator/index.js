@@ -10,6 +10,7 @@ import { captureSessionId } from "../utils/sessionManager.js";
 import { ensureStreamToolCallIds } from "../utils/streamHelpers.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
 import { PROVIDERS } from "../providers/index.js";
+import { validateResponsesToClaudeThinking } from "./request/responses-to-claude.js";
 import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
 
 // Registry for translators. Lazy-init guards against circular-import order:
@@ -69,29 +70,25 @@ function detectClientLastRole(body) {
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null) {
   ensureInitialized();
   let result = body;
+  const directResponses = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.CLAUDE;
   // Role the client actually ended on, before any translator drops an emptied turn.
-  const clientLastRole = detectClientLastRole(body);
+  const clientLastRole = detectClientLastRole(directResponses ? { input: body.input } : body);
 
-  // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
-  stripContentTypes(result, stripList);
+  if (!directResponses) {
+    stripContentTypes(result, stripList);
+    normalizeThinkingConfig(result);
+    ensureToolCallIds(result);
 
-  // Normalize thinking config while preserving user and tool-result turns.
-  normalizeThinkingConfig(result);
-
-  // Always ensure tool_calls have id (some providers require it)
-  ensureToolCallIds(result);
-  
-  // Kiro performs stricter source-aware reconciliation after session replay.
-  // The generic helper inserts OpenAI `role: tool` messages, which a direct
-  // Claude→Kiro translator cannot consume and which cannot repair partial
-  // parallel tool results.
-  if (targetFormat !== FORMATS.KIRO) {
-    fixMissingToolResponses(result);
+    // Kiro reconciles tool results after session replay. The generic repair
+    // inserts Chat Completions role:tool messages, which Kiro cannot consume.
+    if (targetFormat !== FORMATS.KIRO) fixMissingToolResponses(result);
   }
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.
-  const thinkingIntent = captureThinking(result);
+  const summary = result.reasoning?.summary;
+  const thinkingIntent = captureThinking(result) ?? (directResponses && summary && summary !== "none"
+    ? { mode: "auto", display: "summarized" } : undefined);
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
@@ -99,6 +96,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   if (credentials) credentials._clientSessionId = clientSessionId;
 
   const translationOptions = {
+    provider,
+    stripList,
     preserveCacheControl: targetFormat === FORMATS.OPENAI && !!PROVIDERS[provider]?.quirks?.preserveCacheControl,
   };
 
@@ -139,7 +138,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     targetFormat === FORMATS.KIRO &&
     (sourceFormat === FORMATS.OPENAI || sourceFormat === FORMATS.CLAUDE);
   if (!kiroThinkingMappedByTranslator) {
+    const format = directResponses ? result.output_config?.format : undefined;
     applyThinking(targetFormat, model, result, provider, thinkingIntent);
+    if (format) result.output_config = { ...result.output_config, format };
   }
 
   // Always normalize to clean OpenAI format when target is OpenAI
@@ -151,7 +152,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Final step: prepare request for Claude format endpoints
   if (targetFormat === FORMATS.CLAUDE) {
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
-    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId);
+    if (directResponses) validateResponsesToClaudeThinking(result, body, model, provider);
+    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, { explicitResponsesHistory: directResponses });
     if (Array.isArray(result?.messages)) result.messages = ensureTrailingUserTurn(result.messages, clientLastRole);
   }
 
@@ -332,6 +334,7 @@ import "./request/openai-to-ollama.js";
 import "./request/openai-to-commandcode.js";
 import "./request/claude-to-kiro.js";
 import "./response/claude-to-openai.js";
+import "./response/claude-to-responses.js";
 import "./response/openai-to-claude.js";
 import "./response/gemini-to-openai.js";
 import "./response/openai-to-antigravity.js";

@@ -902,6 +902,20 @@ function isCommandCodeTextOnly(model) {
   }
   return false;
 }
+// Native features require both a known Anthropic route and a supported model.
+export function getClaudeResponsesCapabilities(provider, model) {
+  if (provider !== "anthropic" && provider !== "claude") return {};
+  const id = model?.split("/").at(-1)?.replace(/\([^()]*\)$/, "");
+  const version = /^claude-(?:haiku|sonnet|opus|fable|mythos)-(\d+)(?:[-.](\d{1,2}))?(?:-|$)/.exec(id);
+  const major = Number(version?.[1]);
+  const minor = Number(version?.[2]);
+  return {
+    native: true,
+    structuredOutputs: major >= 5 || (major === 4 && minor >= 5),
+    webSearch: (major >= 4 || /^claude-3(?:[-.]5-haiku|[-.]7-sonnet)(?:-|$)/.test(id)) ? "web_search_20250305" : undefined,
+  };
+}
+
 export function getCapabilitiesForModel(provider, model) {
   if (!model) return { ...DEFAULT_CAPABILITIES };
 

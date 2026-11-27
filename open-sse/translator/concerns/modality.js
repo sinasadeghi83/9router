@@ -82,13 +82,20 @@ function stripOpenAI(body, caps) {
 }
 
 // Claude messages[].content[].
-function stripClaude(body, caps) {
+function stripClaude(body, caps, includeToolResults) {
   if (!Array.isArray(body.messages)) return;
   const last = body.messages.length - 1;
   body.messages.forEach((msg, i) => {
     if (!Array.isArray(msg.content)) return;
     const removed = new Set();
     msg.content = filterBlocks(msg.content, capForClaudeBlock, caps, removed, i === last);
+    if (includeToolResults) {
+      for (const block of msg.content) {
+        if (block?.type === "tool_result" && Array.isArray(block.content)) {
+          block.content = filterBlocks(block.content, capForClaudeBlock, caps, new Set(), i === last);
+        }
+      }
+    }
   });
 }
 
@@ -132,7 +139,7 @@ function stripGeminiParts(contents, caps) {
  * @param {object} caps - capabilities from getCapabilitiesForModel
  * @returns {boolean} true if anything was stripped-eligible (cap false for some modality)
  */
-export function stripUnsupportedModalities(body, sourceFormat, caps) {
+export function stripUnsupportedModalities(body, sourceFormat, caps, { includeToolResults = false } = {}) {
   if (!body || !caps) return false;
   // Fast exit: model supports everything we'd strip.
   if (caps.vision !== false && caps.audioInput !== false && caps.pdf !== false) return false;
@@ -146,7 +153,7 @@ export function stripUnsupportedModalities(body, sourceFormat, caps) {
       stripOpenAI(body, caps);
       break;
     case FORMATS.CLAUDE:
-      stripClaude(body, caps);
+      stripClaude(body, caps, includeToolResults);
       break;
     case FORMATS.OPENAI_RESPONSES:
     case FORMATS.OPENAI_RESPONSE:

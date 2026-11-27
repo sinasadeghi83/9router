@@ -78,9 +78,9 @@ function sseStream(chunks) {
 }
 
 // Upstream speaks `upstream`, client speaks the Responses API.
-async function viaResponsesTranslator(chunks, upstream, provider, model) {
+async function viaResponsesTranslator(chunks, upstream, provider, model, body) {
   const out = sseStream(chunks).pipeThrough(
-    createSSETransformStreamWithLogger(upstream, FORMATS.OPENAI_RESPONSES, provider, null, null, model),
+    createSSETransformStreamWithLogger(upstream, FORMATS.OPENAI_RESPONSES, provider, null, null, model, null, body),
   );
   return parseEvents(await drain(out));
 }
@@ -129,7 +129,7 @@ describe("claude-to-openai: thinking never leaks markers into content", () => {
 
 describe("Responses translator: reasoning closes before the answer", () => {
   it("Claude upstream: reasoning item is done before the message item opens", async () => {
-    const events = await viaResponsesTranslator(claudeThinkingStream(), FORMATS.CLAUDE, "claude", "claude-opus-5");
+    const events = await viaResponsesTranslator(claudeThinkingStream(), FORMATS.CLAUDE, "claude", "claude-opus-5", { reasoning: { summary: "auto" } });
     expectReasoningClosedBefore(events, "message");
     const summary = events.find((e) => e.type === "response.reasoning_summary_text.done");
     expect(summary?.text).toBe(THINKING);

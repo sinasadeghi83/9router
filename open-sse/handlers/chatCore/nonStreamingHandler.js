@@ -1,5 +1,6 @@
 import { FORMATS } from "../../translator/formats.js";
 import { needsTranslation } from "../../translator/index.js";
+import { claudeMessageToResponses, collectClaudeResponses } from "../../translator/response/claude-to-responses.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
@@ -17,6 +18,7 @@ import {
   openAICompletionToResponses,
   responsesToOpenAICompletion,
   responsesToClaudeMessage,
+  extractTextFromResponsesOutput,
 } from "./responseFormats.js";
 import { restoreToolNames } from "../../utils/opencodeFingerprint.js";
 
@@ -34,8 +36,11 @@ export {
  * already answered in Chat Completions shape got the second step, so a Responses
  * API client in front of Gemini/Antigravity received a chat.completion body.
  */
-export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames = null) {
+export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames = null, body = null, model = null, toolNameMap = null) {
   if (targetFormat === sourceFormat) return responseBody;
+  if (targetFormat === FORMATS.CLAUDE && sourceFormat === FORMATS.OPENAI_RESPONSES) {
+    return claudeMessageToResponses(responseBody, body, model, toolNameMap, customToolNames);
+  }
   const openai = targetFormat === FORMATS.OPENAI ? responseBody : providerBodyToOpenAI(responseBody, targetFormat, sourceFormat, customToolNames);
   if (sourceFormat === FORMATS.OPENAI_RESPONSES && openai?.choices) {
     return openAICompletionToResponses(openai, customToolNames);
@@ -208,9 +213,36 @@ function providerBodyToOpenAI(responseBody, targetFormat, sourceFormat, customTo
 export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, pxpipe, reqTag, log }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
+  const directClaudeResponses = targetFormat === FORMATS.CLAUDE && sourceFormat === FORMATS.OPENAI_RESPONSES;
   let responseBody;
+  let directResponse;
 
-  if (contentType.includes("text/event-stream")) {
+  if (directClaudeResponses) {
+    try {
+      if (contentType.includes("text/event-stream")) {
+        const { response, usage } = await collectClaudeResponses(providerResponse.body, body, model, toolNameMap, customToolNames);
+        directResponse = response;
+        responseBody = { ...response, usage };
+      } else {
+        responseBody = await providerResponse.json();
+        directResponse = translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames, body, model, toolNameMap);
+      }
+    } catch {
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid Anthropic response");
+    }
+    if (directResponse.status === "failed") {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return {
+        success: false,
+        status: HTTP_STATUS.BAD_GATEWAY,
+        error: directResponse.error.message,
+        response: Response.json(directResponse, {
+          status: HTTP_STATUS.BAD_GATEWAY,
+          headers: { "Access-Control-Allow-Origin": "*", ...upstreamResponseHeaders(providerResponse.headers) }
+        }),
+      };
+    }
+  } else if (contentType.includes("text/event-stream")) {
     const sseText = await providerResponse.text();
     const isResponsesUpstream = targetFormat === FORMATS.OPENAI_RESPONSES || PROVIDERS[provider]?.format === FORMATS.OPENAI_RESPONSES;
     let parsed;
@@ -257,16 +289,16 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
-  responseBody = decloakToolNames(responseBody, toolNameMap);
+  if (!directClaudeResponses) responseBody = decloakToolNames(responseBody, toolNameMap);
 
   const usage = extractUsageFromResponse(responseBody);
   appendLog({ tokens: usage, status: "200 OK" });
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
   if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
-  const translatedResponse = needsTranslation(targetFormat, sourceFormat)
+  const translatedResponse = directResponse ?? (needsTranslation(targetFormat, sourceFormat)
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames)
-    : responseBody;
+    : responseBody);
   const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
   // Drop signature-less thinking blocks when the Claude client never enabled
   // thinking — otherwise reasoning leaks into the visible message.
@@ -308,7 +340,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }
   }
 
-  if (translatedResponse?.usage) {
+  if (translatedResponse?.usage && !directClaudeResponses) {
     translatedResponse.usage = filterUsageForFormat(addBufferToUsage(translatedResponse.usage), sourceFormat);
   }
 
@@ -334,7 +366,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     providerRequest: finalBody || translatedBody || null,
     providerResponse: responseBody || null,
     response: {
-      content: translatedResponse?.choices?.[0]?.message?.content
+      content: (isResponsesResponse && extractTextFromResponsesOutput(translatedResponse.output))
+        || translatedResponse?.choices?.[0]?.message?.content
         || (Array.isArray(translatedResponse?.content)
           ? translatedResponse.content.filter(c => c.type === "text").map(c => c.text || "").join("")
           : translatedResponse?.content)
@@ -345,7 +378,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
           : null)
         || translatedResponse?.reasoning_content
         || null,
-      finish_reason: translatedResponse?.choices?.[0]?.finish_reason || translatedResponse?.stop_reason || "unknown"
+      finish_reason: translatedResponse?.choices?.[0]?.finish_reason || translatedResponse?.stop_reason || translatedResponse?.status || "unknown"
     },
     pxpipe,
     status: "success"

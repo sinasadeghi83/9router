@@ -2,6 +2,11 @@
 
 // Anthropic Messages SSE events (client format of /v1/messages).
 export const CLAUDE_EVENT = {
+  MESSAGE_START: "message_start",
+  MESSAGE_STOP: "message_stop",
+  PING: "ping",
+  ERROR: "error",
+  CONTENT_BLOCK_STOP: "content_block_stop",
   CONTENT_BLOCK_START: "content_block_start",
   CONTENT_BLOCK_DELTA: "content_block_delta",
   MESSAGE_DELTA: "message_delta",
@@ -10,6 +15,8 @@ export const CLAUDE_EVENT = {
 // Anthropic content_block_delta delta types.
 export const CLAUDE_DELTA = {
   TEXT: "text_delta",
+  THINKING: "thinking_delta",
+  CITATIONS: "citations_delta",
   INPUT_JSON: "input_json_delta",
 };
 
@@ -17,6 +24,22 @@ export const CLAUDE_DELTA = {
 // Every one of these starts with RESPONSES_EVENT_PREFIX.
 export const RESPONSES_EVENT_PREFIX = "response.";
 export const RESPONSES_EVENT = {
+  CREATED: "response.created",
+  IN_PROGRESS: "response.in_progress",
+  CONTENT_PART_ADDED: "response.content_part.added",
+  CONTENT_PART_DONE: "response.content_part.done",
+  OUTPUT_TEXT_ANNOTATION_ADDED: "response.output_text.annotation.added",
+  REASONING_PART_ADDED: "response.reasoning_summary_part.added",
+  REASONING_PART_DONE: "response.reasoning_summary_part.done",
+  REASONING_TEXT_DELTA: "response.reasoning_summary_text.delta",
+  REASONING_TEXT_DONE: "response.reasoning_summary_text.done",
+  FUNCTION_CALL_ARGUMENTS_DONE: "response.function_call_arguments.done",
+  CUSTOM_TOOL_CALL_INPUT_DONE: "response.custom_tool_call_input.done",
+  REFUSAL_DELTA: "response.refusal.delta",
+  REFUSAL_DONE: "response.refusal.done",
+  WEB_SEARCH_IN_PROGRESS: "response.web_search_call.in_progress",
+  WEB_SEARCH_SEARCHING: "response.web_search_call.searching",
+  WEB_SEARCH_COMPLETED: "response.web_search_call.completed",
   OUTPUT_ITEM_ADDED: "response.output_item.added",
   OUTPUT_ITEM_DONE: "response.output_item.done",
   OUTPUT_TEXT_DELTA: "response.output_text.delta",

@@ -1,6 +1,7 @@
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { PROVIDERS } from "../config/providers.js";
+import { createClaudeResponsesState, parseClaudeResponsesLine } from "../translator/response/claude-to-responses.js";
 import { liftReasoningAliases } from "../translator/concerns/reasoning.js";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
@@ -58,7 +59,8 @@ export function createSSEStream(options = {}) {
     body = null,
     onStreamComplete = null,
     apiKey = null,
-    credentials = null
+    credentials = null,
+    claudeResponses = null,
   } = options;
 
   let buffer = "";
@@ -104,6 +106,10 @@ export function createSSEStream(options = {}) {
         // it is in. Absent/undefined means "unknown", i.e. do not defer.
         targetFormat }
     : null;
+
+  if (state && targetFormat === FORMATS.CLAUDE && sourceFormat === FORMATS.OPENAI_RESPONSES) {
+    state.claudeResponses = claudeResponses ?? createClaudeResponsesState(body, model, toolNameMap, customToolNames);
+  }
 
   let totalContentLength = 0;
   let accumulatedContent = "";
@@ -340,10 +346,18 @@ export function createSSEStream(options = {}) {
         }
 
         // Translate mode
-        if (!trimmed) continue;
+        if (!trimmed && !state.claudeResponses) continue;
 
-        const parsed = parseSSELine(trimmed, targetFormat);
+        const parsed = state.claudeResponses
+          ? parseClaudeResponsesLine(trimmed, state.claudeResponses)
+          : parseSSELine(trimmed, targetFormat);
         if (!parsed) continue;
+        if (state.claudeResponses && parsed.done) {
+          flushPendingCompletion(controller);
+          trackPendingRequest(model, provider, connectionId, false);
+          controller.terminate();
+          return;
+        }
 
         // Responses API same-format passthrough: preserve event framing + track terminal state
         const isOpenAIResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
@@ -490,6 +504,13 @@ export function createSSEStream(options = {}) {
           }
         }
 
+        if (state.claudeResponses?.terminal) {
+          finalizeStream();
+          trackPendingRequest(model, provider, connectionId, false);
+          controller.terminate();
+          return;
+        }
+
         // The completion deferral can outlive the upstream: a broken chat upstream
         // may stall after finish_reason with no usage trailer and no [DONE], holding
         // the connection open. Bound the wait so the client still gets a terminal event.
@@ -547,7 +568,9 @@ export function createSSEStream(options = {}) {
           // Same parse as the transform loop: without targetFormat this only
           // accepts "data: " lines, so an NDJSON provider (Ollama) lost whatever
           // arrived without its closing newline.
-          const parsed = parseSSELine(buffer.trim(), targetFormat);
+          const parsed = state.claudeResponses
+            ? parseClaudeResponsesLine(buffer.trim(), state.claudeResponses)
+            : parseSSELine(buffer.trim(), targetFormat);
           // Same event-name restoration as the transform loop for trailing fragments.
           if (targetFormat === FORMATS.OPENAI_RESPONSES && parsed && typeof parsed === "object" && !parsed.done) {
             if (!parsed.type && !parsed.event && currentOpenAIResponsesEvent) {
@@ -630,7 +653,7 @@ export function createSSEStream(options = {}) {
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, customToolNames = null, credentials = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, customToolNames = null, credentials = null, claudeResponses = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -644,7 +667,8 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     body,
     onStreamComplete,
     apiKey,
-    credentials
+    credentials,
+    claudeResponses,
   });
 }
 
